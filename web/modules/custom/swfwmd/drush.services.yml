@@ -1,0 +1,5 @@
+services:
+  swfwmd.commands:
+    class: \Drupal\swfwmd\Commands\SwfwmdCommands
+    tags:
+      - { name: drush.command }

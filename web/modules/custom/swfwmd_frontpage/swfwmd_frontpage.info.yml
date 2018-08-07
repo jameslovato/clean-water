@@ -1,0 +1,10 @@
+name: 'SWFWMD Frontpage'
+description: 'SWFWMD frontpage.'
+type: module
+core: 8.x
+package: 'SWFWMD'
+dependencies:
+  # Core modules.
+  # Contrib modules.
+configure: swfwmd_frontpage.settings
+version: 8.x-1.0

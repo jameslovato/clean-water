@@ -1,0 +1,1064 @@
+<?php
+
+/**
+ * @file
+ * Main module file for creating the SWFWMD Landing pages.
+ */
+
+use Drupal\node\Entity\Node;
+use Drupal\Core\Language\Language;
+use Drupal\media_entity\Entity\Media;
+use Drupal\Core\Url;
+use Drupal\paragraphs\Entity\Paragraph;
+use Drupal\block\Entity\Block;
+
+/**
+ * Implements hook_pages_update_dependencies().
+ *
+ * The frontpage has a fixed nid and needs to be created before any other node.
+ */
+function swfwmd_landing_pages_update_dependencies() {
+  // Indicate that the mymodule_update_8001() function provided by this module
+  // must run after the another_module_update_8003() function provided by the
+  // 'another_module' module.
+  $dependencies['swfwmd_landing_pages'][8001] = array(
+    'swfwmd_frontpage' => 8001,
+  );
+  return $dependencies;
+}
+
+/**
+  * Implements hook_install().
+  */
+function swfwmd_landing_pages_install() {
+  // Define initial schema version.
+  drupal_set_installed_schema_version('swfwmd_landing_pages', 8000);
+}
+
+/**
+ * Creating Event Landing page.
+ */
+function swfwmd_landing_pages_update_8001() {
+  $node_events = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Boards, Meetings & Events',
+    'langcode' => 'en',
+    'body' => array(
+      'format' => 'rich_text',
+      'summary' => '<p>This page highlights calendar dates and times for a number of District events.</p>',
+      'value' => '<p>This page highlights calendar dates and times for a number of District events. The section also introduces the boards that provide agency guidance and establish policies for the region.</p><p>Agendas and notebooks of all monthly Governing Board meetings are available, as well as summaries of advisory committees.</p>',
+    ),
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/calendar',
+    ),
+  ]);
+  // Save the node.
+  $node_events->save();
+}
+
+/**
+ * Creating About Landing page.
+ */
+function swfwmd_landing_pages_update_8002() {
+  $node_about = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'About',
+    'langcode' => 'en',
+    'body' => array(
+      'format' => 'rich_text',
+      'summary' => '<p>Compellingly impact bleeding-edge best practices rather than user-centric collaboration and idea-sharing. Assertively.</p>',
+      'value' => '<p>Dynamically deliver effective synergy and sticky solutions. Collaboratively productize cutting-edge data via fully researched e-tailers. Dramatically create high-quality sources before innovative.</p>',
+    ),
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/about',
+    ),
+  ]);
+
+  // Create Sublanding pages and add them as references to about page.
+
+  // Create or get sublanding pages
+  $node_sub_about_district = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'About the District',
+    'langcode' => 'en',
+    'field_menu_tile_baseline' => 'Learn About The District',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/about-the-district',
+    ),
+  ]);
+  $node_sub_about_district->save();
+
+  $node_sub_business = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Business & Finance',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'Business & Finance offers views of the District’s budget and how its financial resources are allocated.',
+    'field_menu_tile_baseline' => 'Business & Finance page',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/business',
+    ),
+  ]);
+  $node_sub_business->save();
+
+  $node_sub_careers = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Careers',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'The Southwest Florida Water Management District (District) manages the water resources for west-central Florida as directed by state law.',
+    'field_menu_tile_baseline' => 'Show Me Around',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/careers',
+    ),
+  ]);
+  $node_sub_careers->save();
+
+  $node_sub_newsroom = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Newsroom',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'The Newsroom',
+    'field_menu_tile_baseline' => 'This is the newsroom sublanding page',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/newsroom',
+    ),
+  ]);
+  $node_sub_newsroom->save();
+
+  $node_sub_contact = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Contact Us',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'Uniquely disintermediate premier growth strategies and fully researched resources.',
+    'field_menu_tile_baseline' => 'This is the contact sublanding page',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/contact',
+    ),
+  ]);
+  $node_sub_contact->save();
+
+  // Get the node id of the existing calendar page.
+  $alias = \Drupal::service('path.alias_manager')->getPathByAlias('/calendar');
+  $params = Url::fromUri("internal:" . $alias)->getRouteParameters();
+  $entity_type = key($params);
+  $node = \Drupal::entityTypeManager()->getStorage($entity_type)->load($params[$entity_type]);
+  $node_id = $node->nid->value;
+  $node_sub_meetings = \Drupal\node\Entity\Node::load($node_id);
+
+  // Build the menu tiles array.
+  $about_menu_tiles = array(
+    '0' => $node_sub_about_district->id(),
+    '1' => $node_sub_business->id(),
+    '2' => $node_sub_careers->id(),
+    '3' => $node_sub_meetings->id(),
+    '4' => $node_sub_newsroom->id(),
+    '5' => $node_sub_contact->id()
+  );
+
+  // Adding the sublanding pages to menu tiles
+  foreach($about_menu_tiles as $about_menu_tile){
+    $node_about->field_menu_tiles_[] = ['target_id' => $about_menu_tile];
+  }
+  // Save the about node.
+  $node_about->save();
+}
+
+/**
+ * Creating Recreation Landing page.
+ */
+function swfwmd_landing_pages_update_8003() {
+  $node_recreation = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Recreation',
+    'langcode' => 'en',
+    'body' => array(
+      'format' => 'rich_text',
+      'summary' => '',
+      'value' => '<h2>Get outside and explore your conservation lands.</h2><div class="jumbotron"><h3>Learn About Our Activities</h3><p>Compellingly incentivize 2.0 methods of empowerment via synergistic functionalities.</p><a class="btn btn-info" href="/recreation/make-a-reservation" title="Click here to make a reservation">Make a reservation</a></div>',
+    ),
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/recreation',
+    ),
+  ]);
+
+  // Import images
+  $image1_data = file_get_contents('https://upload.wikimedia.org/wikipedia/commons/8/86/Loop_Road_in_Big_Cypress%5E_-_panoramio_%282%29.jpg');
+  $file_image1 = file_save_data($image1_data, 'public://about1.jpg', FILE_EXISTS_REPLACE);
+  $image2_data = file_get_contents('https://upload.wikimedia.org/wikipedia/commons/b/b4/Loop_Road_in_Big_Cypress%5E_-_panoramio_%283%29.jpg');
+  $file_image2 = file_save_data($image2_data, 'public://about2.jpg', FILE_EXISTS_REPLACE);
+
+  // Create slideshow medias with those images
+  $media_image1 = Media::create([
+    'bundle' => 'slideshow_image',
+    'name' => "recreation 1",
+    'uid' => 1,
+    'image' => [
+      'target_id' => $file_image1->id(),
+      'alt' => t('this is the alt text'),
+      'title' => t('this is an image'),
+    ],
+    'field_media_in_library' => TRUE,
+  ]);
+  $media_image1->save();
+  $media_image2 = Media::create([
+    'bundle' => 'slideshow_image',
+    'name' => "recreation 2",
+    'uid' => 1,
+    'image' => [
+      'target_id' => $file_image2->id(),
+      'alt' => t('this is the alt text'),
+      'title' => t('this is an image'),
+    ],
+    'field_media_in_library' => TRUE,
+  ]);
+  $media_image2->save();
+
+  // Build the media array.
+  $slideshow_images = array(
+    '0' => $media_image1,
+    '1' => $media_image2
+  );
+
+  // Create a Slideshow for the about page and save it.
+  $node_slideshow = Node::create([
+    'type' => 'slideshow',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Recreation page Slideshow'
+  ]);
+
+  // Adding the images to the slideshow
+  foreach($slideshow_images as $image){
+    $node_slideshow->field_slideshow_images_media[] = $image;
+  }
+
+  // Save the slideshow node.
+  $node_slideshow->save();
+
+  // Add the Slideshow to the about page.
+  $node_recreation->field_slideshow->entity = $node_slideshow;
+
+  // Create Sublanding pages and add them as references to about page.
+
+  // Create or get sublanding pages
+  $node_sub_lands = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Why Does the District Buy Lands?',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'Every year about 2.5 million people visit public conservation lands obtained by the Southwest Florida Water Management District and its partners to protect Florida’s water resources.',
+    'field_menu_tile_baseline' => '',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/recreation/lands',
+    ),
+  ]);
+  $node_sub_lands->save();
+
+  $node_sub_guidelines = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Guidelines for Use of District Lands',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'To make sure that we, as well as future generations, can enjoy quality outdoor experiences, each one of us must share the responsibility of protecting our environment.',
+    'field_menu_tile_baseline' => '',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/recreation/guidelines',
+    ),
+  ]);
+  $node_sub_guidelines->save();
+
+  $node_sub_species = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Species Field Guides',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'These downloadable sample species lists highlight common plants and animals found on the Southwest Florida Water Management District (District) conservation lands.',
+    'field_menu_tile_baseline' => 'Get to Know the Locals',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/recreation/species',
+    ),
+  ]);
+  $node_sub_species->save();
+
+  $node_sub_volunteer = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Volunteer',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'Volunteering is a great way to give back to your community, make friends, learn skills, and enjoy Florida’s beautiful natural areas.m',
+    'field_menu_tile_baseline' => '',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/recreation/volunteer',
+    ),
+  ]);
+  $node_sub_volunteer->save();
+
+  $node_sub_limited_access = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Limited Access During Hunts',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'Limited access during hunt season.',
+    'field_menu_tile_baseline' => '',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/recreation/closed-for-hunting',
+    ),
+  ]);
+  $node_sub_limited_access->save();
+
+  $node_sub_recreation_guide = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Free Recreation Guide',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'See the Free Recreation Guide.',
+    'field_menu_tile_baseline' => '',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/recreation/guide',
+    ),
+  ]);
+  $node_sub_recreation_guide->save();
+
+  // Build the menu tiles array.
+  $recreation_menu_tiles = array(
+    '0' => $node_sub_lands->id(),
+    '1' => $node_sub_species->id(),
+    '2' => $node_sub_volunteer->id(),
+    '3' => $node_sub_limited_access->id(),
+    '4' => $node_sub_guidelines->id(),
+    '5' => $node_sub_recreation_guide->id()
+  );
+
+  // Adding the sublanding pages to menu tiles
+  foreach($recreation_menu_tiles as $recreation_menu_tile){
+    $node_recreation->field_menu_tiles_[] = ['target_id' => $recreation_menu_tile];
+  }
+  // Save the recreation node.
+  $node_recreation->save();
+}
+
+/**
+ * Creating Blog Landing page.
+ */
+function swfwmd_landing_pages_update_8004() {
+
+  // Add image from module directory and create media image for the hero section.
+  $bloghero_data = file_get_contents(drupal_get_path(module, 'swfwmd_landing_pages') . '/images/bloghero.png');
+  $bloghero_image = file_save_data($bloghero_data, 'public://bloghero.jpg', FILE_EXISTS_REPLACE);
+  $bloghero_image = Media::create([
+    'bundle' => 'slideshow_image',
+    'name' => "image blog hero",
+    'uid' => 1,
+    'image' => [
+      'target_id' => $bloghero_image->id(),
+      'alt' => t('this is the alt text'),
+      'title' => t('this is an image'),
+    ],
+    'field_media_in_library' => TRUE,
+  ]);
+  $bloghero_image->save();
+
+  // Create the blog landing page.
+  $node_blog = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Water Matters Blog',
+    'langcode' => 'en',
+    'body' => array(
+      'format' => 'rich_text',
+      'summary' => '',
+      'value' => '',
+    ),
+    'field_image' => [
+      'target_id' => $bloghero_image->id(),
+    ],
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/blog',
+    ),
+  ]);
+
+  // Save the node.
+  $node_blog->save();
+}
+
+/**
+ * Delete the Newsroom node, it is now a view.
+ *
+ */
+function swfwmd_landing_pages_update_8013() {
+  // Get the node id of the existing Newsroom page.
+  $alias = \Drupal::service('path.alias_manager')->getPathByAlias('/newsroom');
+  $params = Url::fromUri("internal:" . $alias)->getRouteParameters();
+  if(!empty($params)) {
+    $entity_type = key($params);
+    $node = \Drupal::entityTypeManager()->getStorage($entity_type)->load($params[$entity_type]);
+    $node_id = $node->nid->value;
+    $node_to_delete = \Drupal\node\Entity\Node::load($node_id);
+    $node_to_delete->delete();
+  }
+}
+
+/**
+ * Replace sub landing pages with landing pages.
+ */
+function swfwmd_landing_pages_update_8014() {
+  // Delete all sublanding pages.
+  $nodes = \Drupal::entityTypeManager()
+    ->getStorage('node')
+    ->loadByProperties(array('type' => 'sub_landing_page'));
+
+  foreach ($nodes as $node) {
+    if (!empty($node)) {
+      $node->delete();
+    }
+  }
+
+  // Delete the content type.
+  $content_type = \Drupal::entityManager()->getStorage('node_type')->load('sub_landing_page');
+  if (!empty($content_type)) {
+    $content_type->delete();
+  }
+
+  // Recreate all sublanding pages as landing pages.
+  $node_about_district = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'About the District',
+    'langcode' => 'en',
+    'field_menu_tile_baseline' => 'Learn About The District',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/about-the-district',
+    ),
+  ]);
+  $node_about_district->save();
+
+  $node_business = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Business & Finance',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'Business & Finance offers views of the District’s budget and how its financial resources are allocated.',
+    'field_menu_tile_baseline' => 'Business & Finance page',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/business',
+    ),
+  ]);
+  $node_business->save();
+
+  $node_careers = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Careers',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'The Southwest Florida Water Management District (District) manages the water resources for west-central Florida as directed by state law.',
+    'field_menu_tile_baseline' => 'Show Me Around',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/careers',
+    ),
+  ]);
+  $node_careers->save();
+
+  $node_contact = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Contact Us',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'Uniquely disintermediate premier growth strategies and fully researched resources.',
+    'field_menu_tile_baseline' => 'This is the contact sublanding page',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/contact',
+    ),
+  ]);
+  $node_contact->save();
+
+  $node_lands = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Why Does the District Buy Lands?',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'Every year about 2.5 million people visit public conservation lands obtained by the Southwest Florida Water Management District and its partners to protect Florida’s water resources.',
+    'field_menu_tile_baseline' => '',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/recreation/lands',
+    ),
+  ]);
+  $node_lands->save();
+
+  $node_guidelines = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Guidelines for Use of District Lands',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'To make sure that we, as well as future generations, can enjoy quality outdoor experiences, each one of us must share the responsibility of protecting our environment.',
+    'field_menu_tile_baseline' => '',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/recreation/guidelines',
+    ),
+  ]);
+  $node_guidelines->save();
+
+  $node_species = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Species Field Guides',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'These downloadable sample species lists highlight common plants and animals found on the Southwest Florida Water Management District (District) conservation lands.',
+    'field_menu_tile_baseline' => 'Get to Know the Locals',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/recreation/species',
+    ),
+  ]);
+  $node_species->save();
+
+  $node_volunteer = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Volunteer',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'Volunteering is a great way to give back to your community, make friends, learn skills, and enjoy Florida’s beautiful natural areas.m',
+    'field_menu_tile_baseline' => '',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/recreation/volunteer',
+    ),
+  ]);
+  $node_volunteer->save();
+
+  $node_limited_access = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Limited Access During Hunts',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'Limited access during hunt season.',
+    'field_menu_tile_baseline' => '',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/recreation/closed-for-hunting',
+    ),
+  ]);
+  $node_limited_access->save();
+
+  $node_recreation_guide = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Free Recreation Guide',
+    'langcode' => 'en',
+    'field_menu_tile_description' => 'See the Free Recreation Guide.',
+    'field_menu_tile_baseline' => '',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/recreation/guide',
+    ),
+  ]);
+  $node_recreation_guide->save();
+}
+
+/**
+ * Create landing page Epermitting.
+ */
+function swfwmd_landing_pages_update_8015() {
+  $node_permits = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'ePermitting',
+    'langcode' => 'en',
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/permits',
+    ),
+  ]);
+  $node_permits->save();
+}
+
+/**
+ * Add menu tiles to the Recreation landing page.
+ *
+ */
+function swfwmd_landing_pages_update_8016() {
+  $paragraph_1 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Why Does The District Buy Lands?',
+    'field_description' => 'Every year about 2.5 million people visit public conservation lands obtained by the Southwest Florida Water Management District and its partners to protect Florida’s water resources.',
+    'field_link' => array(
+      'uri' => 'internal:/recreation/lands',
+      'title' => 'Learn More',
+    ),
+  ]);
+  $paragraph_1->save();
+
+  $paragraph_2 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Guidelines for Use of District Lands',
+    'field_description' => 'To make sure that we, as well as future generations, can enjoy quality outdoor experiences, each one of us must share the responsibility of protecting our environment.',
+    'field_link' => array(
+      'uri' => 'internal:/recreation/guidelines',
+      'title' => 'Learn more about Guidelines',
+    ),
+  ]);
+  $paragraph_2->save();
+
+  $paragraph_3 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Species Field Guide',
+    'field_description' => 'These downloadable sample species lists highlight common plants and animals found on the Southwest Florida Water Management District (District) conservation lands.',
+    'field_link' => array(
+      'uri' => 'internal:/recreation/species',
+      'title' => 'Learn About Species',
+    ),
+  ]);
+  $paragraph_3->save();
+
+  $paragraph_4 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Volunteer',
+    'field_description' => 'Volunteering is a great way to give back to your community, make friends, learn skills, and enjoy Florida’s beautiful natural areas.',
+    'field_link' => array(
+      'uri' => 'internal:/recreation/volunteer',
+      'title' => 'Sign Me Up',
+    ),
+  ]);
+  $paragraph_4->save();
+
+  $paragraph_5 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Limited Access During Hunts',
+    'field_description' => 'Limited access during hunt season.',
+    'field_link' => array(
+      'uri' => 'internal:/recreation/closed-for-hunting',
+      'title' => 'Sign Me Up',
+    ),
+  ]);
+  $paragraph_5->save();
+
+  $paragraph_6 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Free Recreation Guide',
+    'field_description' => 'See the Free Recreation Guide.',
+    'field_link' => array(
+      'uri' => 'internal:/resources/free-publications',
+      'title' => 'Get Your Guide',
+    ),
+  ]);
+  $paragraph_6->save();
+
+  // Get the node id of the existing Recreation page.
+  $alias = \Drupal::service('path.alias_manager')->getPathByAlias('/recreation');
+  $params = Url::fromUri("internal:" . $alias)->getRouteParameters();
+  $entity_type = key($params);
+  $node = \Drupal::entityTypeManager()->getStorage($entity_type)->load($params[$entity_type]);
+  $node_id = $node->nid->value;
+
+  // Get the About page object.
+  $node_recreation = Node::load($node_id);
+
+  // Attach paragraphs to the frontpage.
+  $node_recreation->field_menu_tile_link->appendItem($paragraph_1);
+  $node_recreation->field_menu_tile_link->appendItem($paragraph_2);
+  $node_recreation->field_menu_tile_link->appendItem($paragraph_3);
+  $node_recreation->field_menu_tile_link->appendItem($paragraph_4);
+  $node_recreation->field_menu_tile_link->appendItem($paragraph_5);
+  $node_recreation->field_menu_tile_link->appendItem($paragraph_6);
+
+  // change the description.
+  $node->body->format = 'rich_text';
+  $node_recreation->body->value = '<div class="jumbotron"><h3>Explore your local lands.</h3><p>Compellingly incentivize 2.0 methods of empowerment via synergistic functionalities.</p><a class="btn btn-info" href="/recreation/sites" title="Browse Recreation Sites">Browse Recreation Sites »</a></div>';
+
+  // Save the node.
+  $node_recreation->save();
+}
+
+/**
+ * Add menu tiles to the About landing page.
+ *
+ */
+function swfwmd_landing_pages_update_8017() {
+  $paragraph_1 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'About the District',
+    'field_description' => '',
+    'field_link' => array(
+      'uri' => 'internal:/about-the-district',
+      'title' => 'Learn About The District',
+    ),
+  ]);
+  $paragraph_1->save();
+
+  $paragraph_2 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Careers',
+    'field_description' => '',
+    'field_link' => array(
+      'uri' => 'internal:/careers',
+      'title' => 'Discover Your Calling',
+    ),
+  ]);
+  $paragraph_2->save();
+
+  $paragraph_3 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Business & Finance',
+    'field_description' => 'Business & Finance offers views of the District’s budget and how its financial resources are allocated.',
+    'field_link' => array(
+      'uri' => 'internal:/business',
+      'title' => 'See What\'s New',
+    ),
+  ]);
+  $paragraph_3->save();
+
+  $paragraph_4 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Meetings & Events',
+    'field_description' => '',
+    'field_link' => array(
+      'uri' => 'internal:/calendar',
+      'title' => 'Cet the details',
+    ),
+  ]);
+  $paragraph_4->save();
+
+  $paragraph_5 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Newsroom',
+    'field_description' => '',
+    'field_link' => array(
+      'uri' => 'internal:/newsroom',
+      'title' => 'Get the updates',
+    ),
+  ]);
+  $paragraph_5->save();
+
+  $paragraph_6 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Contact Us',
+    'field_description' => '',
+    'field_link' => array(
+      'uri' => 'internal:/contact',
+      'title' => 'Get In Touch',
+    ),
+  ]);
+  $paragraph_6->save();
+
+  // Get the node id of the existing About page.
+  $alias = \Drupal::service('path.alias_manager')->getPathByAlias('/about');
+  $params = Url::fromUri("internal:" . $alias)->getRouteParameters();
+  $entity_type = key($params);
+  $node = \Drupal::entityTypeManager()->getStorage($entity_type)->load($params[$entity_type]);
+  $node_id = $node->nid->value;
+
+  // Get the About page object.
+  $node_about = Node::load($node_id);
+
+  // Attach paragraphs to the frontpage.
+  $node_about->field_menu_tile_link->appendItem($paragraph_1);
+  $node_about->field_menu_tile_link->appendItem($paragraph_2);
+  $node_about->field_menu_tile_link->appendItem($paragraph_3);
+  $node_about->field_menu_tile_link->appendItem($paragraph_4);
+  $node_about->field_menu_tile_link->appendItem($paragraph_5);
+  $node_about->field_menu_tile_link->appendItem($paragraph_6);
+
+  // change the description.
+  $node->body->format = 'rich_text';
+  $node_about->body->value = '';
+
+  // Save the node.
+  $node_about->save();
+}
+
+/**
+ * Add menu tiles to the About landing page.
+ *
+ */
+function swfwmd_landing_pages_update_8018() {
+  $paragraph_1 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Weeki Wachee Springs',
+    'field_description' => '',
+    'field_link' => array(
+      'uri' => 'internal:/springs',
+      'title' => 'none',
+    ),
+  ]);
+  $paragraph_1->save();
+
+  $paragraph_2 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Chassahowitza Springs',
+    'field_description' => '',
+    'field_link' => array(
+      'uri' => 'internal:/springs',
+      'title' => 'none',
+    ),
+  ]);
+  $paragraph_2->save();
+
+  $paragraph_3 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Crystal River / Kings Bay',
+    'field_description' => '',
+    'field_link' => array(
+      'uri' => 'internal:/springs',
+      'title' => 'none',
+    ),
+  ]);
+  $paragraph_3->save();
+
+  $paragraph_4 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Rainbow Springs',
+    'field_description' => '',
+    'field_link' => array(
+      'uri' => 'internal:/springs',
+      'title' => 'none',
+    ),
+  ]);
+  $paragraph_4->save();
+
+  $paragraph_5 = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Homosassa Springs',
+    'field_description' => '',
+    'field_link' => array(
+      'uri' => 'internal:/springs',
+      'title' => 'none',
+    ),
+  ]);
+  $paragraph_5->save();
+
+  $node_springs = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Springs',
+    'langcode' => 'en',
+    'body' => array(
+      'format' => 'rich_text',
+      'summary' => '',
+      'value' => '',
+    ),
+    'path' => array(
+      'pathauto' => 0,
+      'alias' => '/springs',
+    ),
+  ]);
+
+  // Attach paragraphs.
+  $node_springs->field_menu_tile_link->appendItem($paragraph_1);
+  $node_springs->field_menu_tile_link->appendItem($paragraph_2);
+  $node_springs->field_menu_tile_link->appendItem($paragraph_3);
+  $node_springs->field_menu_tile_link->appendItem($paragraph_4);
+  $node_springs->field_menu_tile_link->appendItem($paragraph_5);
+
+  // Save the node.
+  $node_springs->save();
+}
+
+/**
+ * Remove body value of the Recreation landing page.
+ * Replaced by a block.
+ *
+ */
+function swfwmd_landing_pages_update_8019() {
+  // Get the node id of the existing Recreation page.
+  $alias = \Drupal::service('path.alias_manager')->getPathByAlias('/recreation');
+  $params = Url::fromUri("internal:" . $alias)->getRouteParameters();
+  $entity_type = key($params);
+  $node = \Drupal::entityTypeManager()->getStorage($entity_type)->load($params[$entity_type]);
+  $node_id = $node->nid->value;
+  $node_recreation = Node::load($node_id);
+
+  // Change the value.
+  $node_recreation->body->value = '';
+  // Save the node.
+  $node_recreation->save();
+}
+
+/**
+ * Create a hero block for Newsroom page.
+ *
+ */
+function swfwmd_landing_pages_update_8020() {
+  $blockEntityManager = \Drupal::service('entity.manager')
+    ->getStorage('block_content');
+
+  $block = $blockEntityManager->create(array(
+    'type' => 'hero_block'
+  ));
+
+  $block->info = 'Newsroom Hero';
+
+  $block->uuid = 'a9e12bce-19bc-4f68-bdf3-9cadfcafe33f';
+
+  $block->save();
+}
+
+/**
+ * Fix pages paths.
+ *
+ */
+function swfwmd_landing_pages_update_8021() {
+  // Change calendar path.
+  $alias = \Drupal::service('path.alias_manager')->getPathByAlias('/calendar');
+  $params = Url::fromUri("internal:" . $alias)->getRouteParameters();
+  if(!empty($params)) {
+    $entity_type = key($params);
+    $node = \Drupal::entityTypeManager()->getStorage($entity_type)->load($params[$entity_type]);
+    $node_id = $node->nid->value;
+    $node_cal = Node::load($node_id);
+    $node_cal->path = array(
+      'pathauto' => 0,
+      'alias' => '/about/calendar',
+    );
+    $node_cal->save();
+  }
+  // Change springs path.
+  $alias = \Drupal::service('path.alias_manager')->getPathByAlias('/springs');
+  $params = Url::fromUri("internal:" . $alias)->getRouteParameters();
+  if(!empty($params)) {
+    $entity_type = key($params);
+    $node = \Drupal::entityTypeManager()->getStorage($entity_type)->load($params[$entity_type]);
+    $node_id = $node->nid->value;
+    $node_sp = Node::load($node_id);
+    $node_sp->path = array(
+      'pathauto' => 0,
+      'alias' => '/projects/springs',
+    );
+    $node_sp->save();
+  }
+  // Change contact path.
+  $alias = \Drupal::service('path.alias_manager')->getPathByAlias('/contact');
+  $params = Url::fromUri("internal:" . $alias)->getRouteParameters();
+  if(!empty($params)) {
+    $entity_type = key($params);
+    $node = \Drupal::entityTypeManager()->getStorage($entity_type)->load($params[$entity_type]);
+    $node_id = $node->nid->value;
+    $node_ct = Node::load($node_id);
+    $node_ct->path = array(
+      'pathauto' => 0,
+      'alias' => '/about/contact',
+    );
+    $node_ct->save();
+  }
+  // Change epermitting path.
+  $alias = \Drupal::service('path.alias_manager')->getPathByAlias('/permits');
+  $params = Url::fromUri("internal:" . $alias)->getRouteParameters();
+  if(!empty($params)) {
+    $entity_type = key($params);
+    $node = \Drupal::entityTypeManager()->getStorage($entity_type)->load($params[$entity_type]);
+    $node_id = $node->nid->value;
+    $node_ep = Node::load($node_id);
+    $node_ep->path = array(
+      'pathauto' => 0,
+      'alias' => '/business/permits',
+    );
+    $node_ep->save();
+  }
+  // Change careers path.
+  $alias = \Drupal::service('path.alias_manager')->getPathByAlias('/careers');
+  $params = Url::fromUri("internal:" . $alias)->getRouteParameters();
+  if(!empty($params)) {
+    $entity_type = key($params);
+    $node = \Drupal::entityTypeManager()->getStorage($entity_type)->load($params[$entity_type]);
+    $node_id = $node->nid->value;
+    $node_car = Node::load($node_id);
+    $node_car->path = array(
+      'pathauto' => 0,
+      'alias' => '/about/careers',
+    );
+    $node_car->save();
+  }
+  // Change about-the-district path.
+  $alias = \Drupal::service('path.alias_manager')->getPathByAlias('/about-the-district');
+  $params = Url::fromUri("internal:" . $alias)->getRouteParameters();
+  if(!empty($params)) {
+    $entity_type = key($params);
+    $node = \Drupal::entityTypeManager()->getStorage($entity_type)->load($params[$entity_type]);
+    $node_id = $node->nid->value;
+    $node_dis = Node::load($node_id);
+    $node_dis->path = array(
+      'pathauto' => 0,
+      'alias' => '/about/about-the-district',
+    );
+    $node_dis->save();
+  }
+}
+
+/**
+ * Delete node/6 (/about/calendar).
+ */
+function swfwmd_landing_pages_update_8022() {
+  $storageHandler = \Drupal::entityTypeManager()->getStorage("node");
+  $nodeEntity = $storageHandler->loadMultiple([6]);
+  $storageHandler->delete($nodeEntity);
+}

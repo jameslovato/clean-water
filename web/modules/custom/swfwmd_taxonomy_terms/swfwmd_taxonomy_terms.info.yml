@@ -1,0 +1,10 @@
+name: 'SWFWMD Taxonomy Terms'
+description: 'Create taxonomy terms.'
+type: module
+core: 8.x
+package: 'SWFWMD'
+dependencies:
+  # Core modules.
+  # Contrib modules.
+configure: swfwmd_taxonomy_terms.settings
+version: 8.x-1.0

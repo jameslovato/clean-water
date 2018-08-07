@@ -1,0 +1,178 @@
+<?php
+
+/**
+ * @file
+ * Contains swfwmd_menus.module.
+ */
+
+use Drupal\menu_link_content\Entity\MenuLinkContent;
+
+/**
+ * Helper function: Creates menus for site.
+ *
+ * @param string $menu_name
+ *   The machine name of the menu.
+ * @param array $links
+ *   The links to be created.
+ * @param string $parent
+ *   The menu entity of the parent item.
+ */
+function _swfwmd_menus_create_update($menu_name, $links, $parent = NULL) {
+  // Set the initial weight.
+  $weight = 0;
+
+  // Do not proceed if this is empty.
+  if (empty($links)) {
+    return;
+  }
+
+  foreach ($links as $title => $info) {
+    $force_weight = isset($info['weight']) ? $info['weight'] : $weight;
+
+    // Initially create the menu item entity.
+    if (!isset($info['old_title']) || empty($info['old_title'])) {
+      $menu_item = _swfwmd_menus_create($title, $menu_name, $force_weight, $parent, $info, FALSE);
+    }
+    else {
+      // Look for an existing menu item based on an old name.
+      $search_properties = ['title' => $info['old_title'], 'menu_name' => $menu_name];
+      if (isset($info['old_uri'])) {
+        $search_properties['link.uri'] = $info['old_uri'];
+      }
+
+      $menu_link_search = \Drupal::entityTypeManager()
+        ->getStorage('menu_link_content')
+        ->loadByProperties($search_properties);
+
+      if (empty($menu_link_search)) {
+        // If the search yields no result, create the menu item anyway.
+        $menu_item = _swfwmd_menus_create($title, $menu_name, $force_weight, $parent, $info, FALSE);
+      }
+      else {
+        // If the search yields results, get the first item only.
+        $old_menu_link = current($menu_link_search);
+        $menu_item = _swfwmd_menus_update($old_menu_link, $title, $menu_name, $force_weight, $parent, $info, FALSE);
+      }
+    }
+
+    // Process the menu children if any.
+    if (isset($info['children'])) {
+      _swfwmd_menus_create_update($menu_name, $info['children'], $menu_item->getPluginId());
+    }
+
+    $weight++;
+  }
+}
+
+/**
+ * Helper function to create menu item.
+ *
+ * @param string $title
+ *   The title of the menu item.
+ * @param string $menu_name
+ *   The machine name of the vocabulary.
+ * @param int $weight
+ *   The weight of the menu item.
+ * @param string $parent
+ *   The plugin ID of the parent menu item.
+ * @param array $info
+ *   Additional field values.
+ * @param boolean $id
+ *   Whether to return the id or the whole menu item.
+ *
+ * @return mixed
+ *   The plugin ID of the menu item or the whole entity.
+ */
+function _swfwmd_menus_create($title, $menu_name, $weight = 0, $parent = NULL, $info = [], $id = TRUE) {
+  // Initially create the menu entity.
+  $menu_item = MenuLinkContent::create([
+    'bundle' => 'menu_link_content',
+    'title' => $title,
+    'menu_name' => $menu_name,
+    'link' => [
+      [
+        'title' => isset($info['title']) ? $info['title'] : '',
+        'attributes' => isset($info['attributes']) ? $info['attributes'] : [],
+        'options' => isset($info['options']) ? $info['options'] : [],
+        'uri' => $info['uri'],
+      ],
+    ],
+    'parent' => $parent,
+    'description' => isset($info['description']) ? $info['description'] : '',
+    'rediscover' => isset($info['rediscover']) ? $info['rediscover'] : '',
+    'weight' => $weight,
+    'expanded' => TRUE,
+  ]);
+
+  // Add option attributes and save the menu again.
+  if (isset($info['class'])) {
+    $options = ['attributes' => ['class' => $info['class']]];
+    $menu_item_options = $menu_item->link->first()->options;
+    $menu_item->link->first()->options = array_merge($menu_item_options, $options);
+  }
+  $menu_item->save();
+
+  if ($id) {
+    // Return the plugin ID of the menu item.
+    return $menu_item->getPluginId();
+  }
+  else {
+    // Or return the entire menu item entity.
+    return $menu_item;
+  }
+}
+
+/**
+ * Helper function to update existing menu item.
+ *
+ * @param Drupal\menu_link_content\Entity\MenuLinkContent $menu_item
+ *   The menu item to update.
+ * @param string $title
+ *   The title of the menu item.
+ * @param string $menu_name
+ *   The machine name of the vocabulary.
+ * @param int $weight
+ *   The weight of the menu item.
+ * @param string $parent
+ *   The plugin ID of the parent menu item.
+ * @param array $info
+ *   Additional field values.
+ * @param boolean $id
+ *   Whether to return the id or the whole menu item.
+ *
+ * @return mixed
+ *   The plugin ID of the menu item or the whole entity.
+ */
+function _swfwmd_menus_update($menu_item, $title, $menu_name, $weight = 0, $parent = NULL, $info = [], $id = TRUE) {
+  // Update the field information of the old menu item.
+  $menu_item->title = $title;
+  $menu_item->menu_name = $menu_name;
+  $menu_item->link = [
+    [
+      'title' => isset($info['title']) ? $info['title'] : '',
+      'attributes' => isset($info['attributes']) ? $info['attributes'] : [],
+      'options' => isset($info['options']) ? $info['options'] : [],
+      'uri' => $info['uri'],
+    ],
+  ];
+  $menu_item->parent = $parent;
+  $menu_item->description = isset($info['description']) ? $info['description'] : '';
+  $menu_item->rediscover = isset($info['rediscover']) ? $info['rediscover'] : '';
+  $menu_item->weight = $weight;
+  $menu_item->expanded = TRUE;
+
+  // Add option attributes and save the menu again.
+  $options = ['attributes' => ['class' => $info['class']]];
+  $menu_item_options = $menu_item->link->first()->options;
+  $menu_item->link->first()->options = array_merge($menu_item_options, $options);
+  $menu_item->save();
+
+  if ($id) {
+    // Return the plugin ID of the menu item.
+    return $menu_item->getPluginId();
+  }
+  else {
+    // Or return the entire menu item entity.
+    return $menu_item;
+  }
+}

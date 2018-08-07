@@ -1,0 +1,15 @@
+name: 'SWFWMD'
+description: 'SWFWMD main customizations module.'
+type: module
+core: 8.x
+package: 'SWFWMD'
+configure: swfwmd.admin_index
+dependencies:
+  # Core modules.
+  # Contrib modules.
+  # Custom modules.
+  - swfwmd_frontpage
+  - swfwmd_landing_pages
+  - swfwmd_menus
+  - swfwmd_taxonomy_terms
+version: 8.x-1.0

@@ -1,0 +1,727 @@
+<?php
+
+/**
+ * @file
+ * Main module file for creating SWFWMD taxonomy terms.
+ */
+
+use Drupal\taxonomy\Entity\Term;
+
+/**
+  * Implements hook_install().
+  */
+function swfwmd_taxonomy_terms_install() {
+  // Define initial schema version.
+  drupal_set_installed_schema_version('swfwmd_taxonomy_terms', 8000);
+}
+
+/**
+ * Create taxonomy terms for all Vocaubularies.
+ */
+function swfwmd_taxonomy_terms_update_8001() {
+
+  // Define terms for each vocabulary.
+  $term_list = array(
+    'event_type' => array(
+      'District meeting' => array(),
+      'Event' => array(),
+      'Governing Board' => array(),
+      'Advisory Committees' => array(),
+      'Conferences, Seminars & Workshops' => array(),
+    ),
+    'subject' => array(
+      'Conserving Water' => array(),
+      'Landscaping' => array(),
+      'Watter Matters' => array(),
+      'Nature & Land' => array(),
+      'Pollution & Water Quality' => array(),
+      'Water Management' => array(),
+    ),
+    'activity' => array(
+      'ADA Accessible' => array(),
+      'Biking' => array(),
+      'Birding' => array(),
+      'Boating' => array(),
+      'Camping' => array(),
+      'Canoeing' => array(),
+      'Equestrian' => array(),
+      'Fishing' => array(),
+      'Hiking' => array(),
+      'Hunting' => array(),
+      'Florida Springs' => array(),
+      'Picnic Areas' => array(),
+    ),
+    'department' => array(
+      'Communications & Board Services' => array(),
+      'Data Collection' => array(),
+      'Environmental Resource Permit' => array(),
+      'Executive' => array(),
+      'Finance' => array(),
+      'General Services' => array(),
+      'Human Resources Office' => array(),
+      'Information Technology' => array(),
+      'Natural Systems & Restoration' => array(),
+      'Office of General Counsel' => array(),
+      'Office of Gov Community' => array(),
+      'Office of Inspector General' => array(),
+      'Ombudsman Office' => array(),
+      'Operations & Land Management' => array(),
+      'Project Management Office' => array(),
+      'Regulatory Support' => array(),
+      'Water Resources' => array(),
+      'Water Use Permit' => array(),
+    ),
+    'event_attachment' => array(
+      'Agenda' => array(),
+      'Minutes' => array(),
+      'Notebook' => array(),
+      'Video link' => array(),
+      'Other' => array(),
+    ),
+  );
+
+  // Save each terms.
+  foreach ($term_list as $vocabulary => $terms) {
+    $term_weight = 0;
+    foreach ($terms as $term => $sub_terms) {
+      $term_id = _swfwmd_taxonomy_terms_create($term, $vocabulary, $term_weight);
+      if (is_array($sub_terms) && !empty($sub_terms)) {
+        $sub_weight = 0;
+        foreach ($sub_terms as $sub_term => $sub_sub_terms) {
+          $sub_term_id = _swfwmd_taxonomy_terms_create($sub_term, $vocabulary, $sub_weight, $term_id);
+          if (is_array($sub_sub_terms) && !empty($sub_sub_terms)) {
+            $sub_sub_weight = 0;
+            foreach ($sub_sub_terms as $sub_sub_term) {
+              $sub_sub_term_id = _swfwmd_taxonomy_terms_create($sub_sub_term, $vocabulary, $sub_sub_weight, $sub_term_id);
+              $sub_sub_weight++;
+            }
+          }
+          $sub_weight++;
+        }
+      }
+      $term_weight++;
+    }
+  }
+}
+
+/**
+ * Create taxonomy terms for Site Section vocabulary.
+ */
+function swfwmd_taxonomy_terms_update_8002() {
+
+    // Define terms for each vocabulary.
+    $term_list = array(
+        'site_section' => array(
+            'Agriculture' => array(),
+            'ePermitting' => array(),
+            'Florida-Friendly Landscaping' => array(),
+            'Water Conservation' => array(),
+            'Finance' => array(),
+            'Careers' => array(),
+            'Contact Us' => array(),
+            'Data & Maps' => array(),
+            'Weather & Hydrology' => array(),
+            'Documents & Publications' => array(),
+            'About the District' => array(),
+            'Education' => array(),
+            'Springs' => array(),
+        )
+    );
+
+    // Save each terms.
+    foreach ($term_list as $vocabulary => $terms) {
+        $term_weight = 0;
+        foreach ($terms as $term => $sub_terms) {
+            $term_id = _swfwmd_taxonomy_terms_create($term, $vocabulary, $term_weight);
+            if (is_array($sub_terms) && !empty($sub_terms)) {
+                $sub_weight = 0;
+                foreach ($sub_terms as $sub_term => $sub_sub_terms) {
+                    $sub_term_id = _swfwmd_taxonomy_terms_create($sub_term, $vocabulary, $sub_weight, $term_id);
+                    if (is_array($sub_sub_terms) && !empty($sub_sub_terms)) {
+                        $sub_sub_weight = 0;
+                        foreach ($sub_sub_terms as $sub_sub_term) {
+                            $sub_sub_term_id = _swfwmd_taxonomy_terms_create($sub_sub_term, $vocabulary, $sub_sub_weight, $sub_term_id);
+                            $sub_sub_weight++;
+                        }
+                    }
+                    $sub_weight++;
+                }
+            }
+            $term_weight++;
+        }
+    }
+}
+
+/**
+ * Create taxonomy terms documents and reports.
+ */
+function swfwmd_taxonomy_terms_update_8003() {
+
+  // Define terms for each vocabulary.
+  $term_list = array(
+      'location' => array(
+        'Anclote River' => array(),
+        'Alafia River' => array(),
+        'Braden River' => array(),
+        'Chassahowitzka River' => array(),
+        'Crystal River/Kings Bay' => array(),
+        'Dona Bay/Shakett Creek below Cow Pen Slough' => array(),
+        'Gum Slough Spring Run' => array(),
+        'Hillsborough River' => array(),
+        'Homosassa River' => array(),
+        'Little Manatee River' => array(),
+        'Myakka River (Lower)' => array(),
+        'Myakka River (Upper)' => array(),
+        'Peace River' => array(),
+        'Pithlachascotee River' => array(),
+        'Rainbow River System' => array(),
+        'Sulphur Springs' => array(),
+        'Tampa Bypass Canal' => array(),
+        'Weeki Wachee River' => array(),
+        'Withlacoochee River' => array(),
+        'Highlands' => array(),
+        'Hillsborough' => array(),
+        'Pasco' => array(),
+        'Polk' => array(),
+        'Citrus' => array(),
+        'Hernando' => array(),
+        'Levy' => array(),
+        'Marion' => array(),
+        'Sumter' => array(),
+      ),
+      'water_resources' => array(
+        'River' => array(),
+        'Lake' => array(),
+      ),
+  );
+
+  // Save each terms.
+  foreach ($term_list as $vocabulary => $terms) {
+    $term_weight = 0;
+    foreach ($terms as $term => $sub_terms) {
+      $term_id = _swfwmd_taxonomy_terms_create($term, $vocabulary, $term_weight);
+      if (is_array($sub_terms) && !empty($sub_terms)) {
+        $sub_weight = 0;
+        foreach ($sub_terms as $sub_term => $sub_sub_terms) {
+          $sub_term_id = _swfwmd_taxonomy_terms_create($sub_term, $vocabulary, $sub_weight, $term_id);
+          if (is_array($sub_sub_terms) && !empty($sub_sub_terms)) {
+            $sub_sub_weight = 0;
+            foreach ($sub_sub_terms as $sub_sub_term) {
+              $sub_sub_term_id = _swfwmd_taxonomy_terms_create($sub_sub_term, $vocabulary, $sub_sub_weight, $sub_term_id);
+              $sub_sub_weight++;
+            }
+          }
+          $sub_weight++;
+        }
+      }
+      $term_weight++;
+    }
+  }
+}
+
+/**
+ * Create taxonomy terms for Image category.
+ */
+function swfwmd_taxonomy_terms_update_8004() {
+
+  // Define terms for each vocabulary.
+  $term_list = array(
+      'image_category' => array(
+        'About' => array(),
+        'Residents' => array(),
+        'Businesses' => array(),
+        'Programs & Projects' => array(),
+        'Resources' => array(),
+        'Recreation' => array(),
+        'Agriculture' => array(),
+        'ePermitting' => array(),
+        'Florida-Friendly Landscaping' => array(),
+        'Water Conservation' => array(),
+        'Weather & Hydrology' => array(),
+        'Education' => array(),
+        'Kids' => array(),
+        'Springs' => array(),
+      ),
+  );
+
+  // Save each terms.
+  foreach ($term_list as $vocabulary => $terms) {
+    $term_weight = 0;
+    foreach ($terms as $term => $sub_terms) {
+      $term_id = _swfwmd_taxonomy_terms_create($term, $vocabulary, $term_weight);
+      if (is_array($sub_terms) && !empty($sub_terms)) {
+        $sub_weight = 0;
+        foreach ($sub_terms as $sub_term => $sub_sub_terms) {
+          $sub_term_id = _swfwmd_taxonomy_terms_create($sub_term, $vocabulary, $sub_weight, $term_id);
+          if (is_array($sub_sub_terms) && !empty($sub_sub_terms)) {
+            $sub_sub_weight = 0;
+            foreach ($sub_sub_terms as $sub_sub_term) {
+              $sub_sub_term_id = _swfwmd_taxonomy_terms_create($sub_sub_term, $vocabulary, $sub_sub_weight, $sub_term_id);
+              $sub_sub_weight++;
+            }
+          }
+          $sub_weight++;
+        }
+      }
+      $term_weight++;
+    }
+  }
+}
+
+/**
+ * Create or update taxonomy terms for Site Sections category.
+ */
+function swfwmd_taxonomy_terms_update_8005() {
+  // Set a list of vocabularies and repective terms.
+  $vocabularies = [
+    'site_section' => [
+      'About' => [
+        'old_name' => '',
+        'fields' => [
+          'field_path_alias_pattern' => 'about/',
+        ],
+        'children' => [
+          'Finance' => [
+            'old_name' => 'Finance',
+            'fields' => [
+              'field_path_alias_pattern' => 'about/finance/',
+            ],
+            'children' => [],
+          ],
+          'Careers' => [
+            'old_name' => 'Careers',
+            'fields' => [
+              'field_path_alias_pattern' => 'about/careers/',
+            ],
+            'children' => [],
+          ],
+          'Contact Us' => [
+            'old_name' => 'Contact Us',
+            'fields' => [
+              'field_path_alias_pattern' => 'about/contact/',
+            ],
+            'children' => [],
+          ],
+          'About the District' => [
+            'old_name' => 'About the District',
+            'fields' => [
+              'field_path_alias_pattern' => 'about/about-the-district/',
+            ],
+            'children' => [],
+          ],
+        ],
+      ],
+      'Residents' => [
+        'old_name' => '',
+        'fields' => [
+          'field_path_alias_pattern' => 'residents/',
+        ],
+        'children' => [
+          'Education' => [
+            'old_name' => 'Education',
+            'fields' => [
+              'field_path_alias_pattern' => 'residents/education/',
+            ],
+            'children' => [
+              'Kids' => [
+                'old_name' => '',
+                'fields' => [
+                  'field_path_alias_pattern' => 'residents/education/kids/',
+                ],
+                'children' => [],
+              ],
+            ],
+          ],
+        ],
+      ],
+      'Business' => [
+        'old_name' => '',
+        'fields' => [
+          'field_path_alias_pattern' => 'business/',
+        ],
+        'children' => [
+          'ePermitting' => [
+            'old_name' => 'ePermitting',
+            'fields' => [
+              'field_path_alias_pattern' => 'business/permits/',
+            ],
+            'children' => [],
+          ],
+        ],
+      ],
+      'Programs & Projects' => [
+        'old_name' => '',
+        'fields' => [
+          'field_path_alias_pattern' => 'projects/',
+        ],
+        'children' => [
+          'Documents & Publications' => [
+            'old_name' => 'Documents & Publications',
+            'fields' => [
+              'field_path_alias_pattern' => 'projects/documents/',
+            ],
+            'children' => [],
+          ],
+          'Springs' => [
+            'old_name' => 'Springs',
+            'fields' => [
+              'field_path_alias_pattern' => 'projects/springs/',
+            ],
+            'children' => [],
+          ],
+        ],
+      ],
+      'Resources' => [
+        'old_name' => '',
+        'fields' => [
+          'field_path_alias_pattern' => 'resources/',
+        ],
+        'children' => [
+          'Data & Maps' => [
+            'old_name' => 'Data & Maps',
+            'fields' => [
+              'field_path_alias_pattern' => 'resources/data/',
+            ],
+            'children' => [],
+          ],
+        ],
+      ],
+      'Recreation' => [
+        'old_name' => '',
+        'fields' => [
+          'field_path_alias_pattern' => 'recreation/',
+        ],
+        'children' => []
+      ],
+      'Agriculture' => [
+        'old_name' => 'Agriculture',
+        'fields' => [
+          'field_path_alias_pattern' => 'agriculture/',
+        ],
+        'children' => []
+      ],
+      'Florida-Friendly Landscaping' => [
+        'old_name' => 'Florida-Friendly Landscaping',
+        'fields' => [
+          'field_path_alias_pattern' => 'florida-friendly/',
+        ],
+        'children' => []
+      ],
+      'Water Conservation' => [
+        'old_name' => 'Water Conservation',
+        'fields' => [
+          'field_path_alias_pattern' => 'conservation/',
+        ],
+        'children' => []
+      ],
+      'Weather & Hydrology' => [
+        'old_name' => 'Weather & Hydrology',
+        'fields' => [
+          'field_path_alias_pattern' => 'hydrology/',
+        ],
+        'children' => []
+      ],
+    ],
+  ];
+
+  // Save each terms to the database.
+  foreach ($vocabularies as $vocabulary => $terms) {
+    _swfwmd_taxonomy_terms_create_update($vocabulary, $terms);
+  }
+}
+
+/**
+ * Create or update taxonomy terms for Site Sections category.
+ */
+function swfwmd_taxonomy_terms_update_8006() {
+  // Set a list of vocabularies and repective terms.
+  $vocabularies = [
+    'site_section' => [
+      'About' => [
+        'old_name' => 'About',
+        'fields' => [
+          'field_path_alias_pattern' => 'about/',
+        ],
+        'children' => [
+          'Finance' => [
+            'old_name' => 'Finance',
+            'fields' => [
+              'field_path_alias_pattern' => 'about/finance/',
+            ],
+            'children' => [],
+          ],
+          'Careers' => [
+            'old_name' => 'Careers',
+            'fields' => [
+              'field_path_alias_pattern' => 'about/careers/',
+            ],
+            'children' => [],
+          ],
+          'Contact Us' => [
+            'old_name' => 'Contact Us',
+            'fields' => [
+              'field_path_alias_pattern' => 'about/contact/',
+            ],
+            'children' => [],
+          ],
+          'About the District' => [
+            'old_name' => 'About the District',
+            'fields' => [
+              'field_path_alias_pattern' => 'about/about-the-district/',
+            ],
+            'children' => [],
+          ],
+        ],
+      ],
+      'Residents' => [
+        'old_name' => 'Residents',
+        'fields' => [
+          'field_path_alias_pattern' => 'residents/',
+        ],
+        'children' => [
+          'Education' => [
+            'old_name' => 'Education',
+            'fields' => [
+              'field_path_alias_pattern' => 'residents/education/',
+            ],
+            'children' => [
+              'Kids' => [
+                'old_name' => 'Kids',
+                'fields' => [
+                  'field_path_alias_pattern' => 'residents/education/kids/',
+                ],
+                'children' => [],
+              ],
+            ],
+          ],
+        ],
+      ],
+      'Business' => [
+        'old_name' => 'Business',
+        'fields' => [
+          'field_path_alias_pattern' => 'business/',
+        ],
+        'children' => [
+          'ePermitting' => [
+            'old_name' => 'ePermitting',
+            'fields' => [
+              'field_path_alias_pattern' => 'business/permits/',
+            ],
+            'children' => [],
+          ],
+        ],
+      ],
+      'Programs & Projects' => [
+        'old_name' => 'Programs & Projects',
+        'fields' => [
+          'field_path_alias_pattern' => 'projects/',
+        ],
+        'children' => [
+          'Documents & Publications' => [
+            'old_name' => 'Documents & Publications',
+            'fields' => [
+              'field_path_alias_pattern' => 'projects/documents/',
+            ],
+            'children' => [],
+          ],
+          'Springs' => [
+            'old_name' => 'Springs',
+            'fields' => [
+              'field_path_alias_pattern' => 'projects/springs/',
+            ],
+            'children' => [],
+          ],
+        ],
+      ],
+      'Resources' => [
+        'old_name' => 'Resources',
+        'fields' => [
+          'field_path_alias_pattern' => 'resources/',
+        ],
+        'children' => [
+          'Data & Maps' => [
+            'old_name' => 'Data & Maps',
+            'fields' => [
+              'field_path_alias_pattern' => 'resources/data/',
+            ],
+            'children' => [],
+          ],
+        ],
+      ],
+      'Recreation' => [
+        'old_name' => 'Recreation',
+        'fields' => [
+          'field_path_alias_pattern' => 'recreation/',
+        ],
+        'children' => []
+      ],
+      'Agriculture' => [
+        'old_name' => 'Agriculture',
+        'fields' => [
+          'field_path_alias_pattern' => 'agriculture/',
+        ],
+        'children' => []
+      ],
+      'Florida-Friendly Landscaping' => [
+        'old_name' => 'Florida-Friendly Landscaping',
+        'fields' => [
+          'field_path_alias_pattern' => 'florida-friendly/',
+        ],
+        'children' => []
+      ],
+      'Water Conservation' => [
+        'old_name' => 'Water Conservation',
+        'fields' => [
+          'field_path_alias_pattern' => 'conservation/',
+        ],
+        'children' => []
+      ],
+      'Weather & Hydrology' => [
+        'old_name' => 'Weather & Hydrology',
+        'fields' => [
+          'field_path_alias_pattern' => 'hydrology/',
+        ],
+        'children' => []
+      ],
+    ],
+  ];
+
+  // Save each terms to the database.
+  foreach ($vocabularies as $vocabulary => $terms) {
+    _swfwmd_taxonomy_terms_create_update($vocabulary, $terms);
+  }
+}
+
+/**
+ * Create Accomplishments term on Event Attachment Type taxonomy.
+ */
+function swfwmd_taxonomy_terms_update_8007() {
+  _swfwmd_taxonomy_terms_create('Accomplishments', 'event_attachment', 0);
+}
+
+/**
+ * Delete all Activity taxonomy terms.
+ */
+function swfwmd_taxonomy_terms_update_8008() {
+  $result = \Drupal::entityQuery('taxonomy_term')
+    ->condition('vid', 'activity')
+    ->execute();
+  entity_delete_multiple('taxonomy_term', $result);
+}
+
+/**
+ * Create or update taxonomy terms for Publication Subjects category.
+ */
+function swfwmd_taxonomy_terms_update_8009() {
+  // Set a list of vocabularies and repective terms.
+  $vocabularies = [
+    'publication_subject' => [
+      'Conservation' => [
+        'old_name' => 'conservation',
+        'fields' => [],
+        'children' => [],
+      ],
+      'Education' => [
+        'old_name' => 'education',
+        'fields' => [],
+        'children' => [],
+      ],
+      'Landscaping' => [
+        'old_name' => 'landscaping',
+        'fields' => [],
+        'children' => [],
+      ],
+      'Nature' => [
+        'old_name' => 'nature',
+        'fields' => [],
+        'children' => [],
+      ],
+      'Other' => [
+        'old_name' => 'other',
+        'fields' => [],
+        'children' => [],
+      ],
+      'Pollution' => [
+        'old_name' => 'pollution',
+        'fields' => [],
+        'children' => [],
+      ],
+      'Teacher\'s Guide' => [
+        'old_name' => 'teachersguide',
+        'fields' => [],
+        'children' => [],
+      ],
+      'Water Management' => [
+        'old_name' => 'watermanagement',
+        'fields' => [],
+        'children' => [],
+      ],
+    ],
+  ];
+
+  // Save each terms to the database.
+  foreach ($vocabularies as $vocabulary => $terms) {
+    _swfwmd_taxonomy_terms_create_update($vocabulary, $terms);
+  }
+}
+
+/**
+ * Remove the Canoeing taxonomy term under Activity vocabulary.
+ */
+function swfwmd_taxonomy_terms_update_8010() {
+  // Get the destiantion ID of migrated Canoeing term.
+  $query = \Drupal::database()->select('migrate_map_activities_csv_import')
+    ->fields('migrate_map_activities_csv_import', array('destid1'))
+    ->condition('sourceid1', 15)
+    ->execute();
+
+  // Load term and delete.
+  if ($term_id = $query->fetchField()) {
+    $term = Term::load($term_id);
+    if ($term) {
+      $term->delete();
+    }
+  }
+
+  // Delete migration mapping of said term.
+  $query = \Drupal::database()->delete('migrate_map_activities_csv_import')
+    ->condition('sourceid1', 15)
+    ->execute();
+}
+
+
+/**
+ * Create taxonomy term Activity.
+ */
+function swfwmd_taxonomy_terms_update_8011() {
+
+  // Define terms for each vocabulary.
+  $term_list = array(
+    'special_display' => array(
+      'Activity' => array(),
+    ),
+  );
+
+  // Save each terms.
+  foreach ($term_list as $vocabulary => $terms) {
+    $term_weight = 0;
+    foreach ($terms as $term => $sub_terms) {
+      $term_id = _swfwmd_taxonomy_terms_create($term, $vocabulary, $term_weight);
+      if (is_array($sub_terms) && !empty($sub_terms)) {
+        $sub_weight = 0;
+        foreach ($sub_terms as $sub_term => $sub_sub_terms) {
+          $sub_term_id = _swfwmd_taxonomy_terms_create($sub_term, $vocabulary, $sub_weight, $term_id);
+          if (is_array($sub_sub_terms) && !empty($sub_sub_terms)) {
+            $sub_sub_weight = 0;
+            foreach ($sub_sub_terms as $sub_sub_term) {
+              $sub_sub_term_id = _swfwmd_taxonomy_terms_create($sub_sub_term, $vocabulary, $sub_sub_weight, $sub_term_id);
+              $sub_sub_weight++;
+            }
+          }
+          $sub_weight++;
+        }
+      }
+      $term_weight++;
+    }
+  }
+}

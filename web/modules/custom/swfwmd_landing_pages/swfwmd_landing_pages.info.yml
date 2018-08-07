@@ -1,0 +1,10 @@
+name: 'SWFWMD Landing Pages'
+description: 'SWFWMD Creates Landing pages.'
+type: module
+core: 8.x
+package: 'SWFWMD'
+dependencies:
+  # Core modules.
+  # Contrib modules.
+configure: swfwmd_landing_pages.settings
+version: 8.x-1.0

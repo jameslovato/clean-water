@@ -1,0 +1,5 @@
+services:
+  swfwmd.route_subscriber:
+    class: Drupal\swfwmd\Routing\RoutePermissions
+    tags:
+      - { name: event_subscriber }

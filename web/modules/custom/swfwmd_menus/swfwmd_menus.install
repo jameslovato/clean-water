@@ -1,0 +1,1382 @@
+<?php
+
+/**
+ * @file
+ * Main module file for creating SWFWMD menus.
+ */
+
+use Drupal\menu_link_content\Entity\MenuLinkContent;
+
+/**
+ * Implements hook_install().
+ */
+function swfwmd_menus_install() {
+  // Define initial schema version.
+  drupal_set_installed_schema_version('swfwmd_menus', 8000);
+}
+
+/**
+ * Create frontpage menu links.
+ *
+ * - In page menu links.
+ * - Footer menu links.
+ * - Events page menu links.
+ * - Main menu links.
+ */
+function swfwmd_menus_update_8001() {
+  global $base_url;
+  $menus = array(
+    'front-page-menu' => array(
+      'About' => array(
+        'url' => 'internal:/about',
+        'class' => 'about',
+      ),
+      'Residents' => array(
+        'url' => 'internal:/residents',
+        'class' => 'residents',
+      ),
+      'Business' => array(
+        'url' => 'internal:/business',
+        'class' => 'business',
+      ),
+      'Programs & Projects' => array(
+        'url' => 'internal:/projects',
+        'class' => 'programs-projects',
+      ),
+      'Resources' => array(
+        'url' => 'internal:/resources',
+        'class' => 'resources',
+      ),
+      'Recreation' => array(
+        'url' => 'internal:/recreation',
+        'class' => 'recreation',
+      ),
+    ),
+    'main' => array(
+      'About' => array(
+        'url' => 'internal:/about',
+        'class' => 'about',
+      ),
+      'Recreation' => array(
+        'url' => 'internal:/recreation',
+        'class' => 'social-media-twitter',
+      ),
+      'Newsroom' => array(
+        'url' => 'internal:/newsroom',
+        'class' => 'newsroom',
+      ),
+      'Blog' => array(
+        'url' => 'internal:/blog',
+        'class' => 'blog',
+      ),
+    ),
+    'footer' => array(
+      'Newsroom' => array(
+        'url' => 'internal:/newsroom',
+        'class' => 'newsroom',
+      ),
+      'E-Permit' => array(
+        'url' => 'internal:/permits',
+        'class' => 'permits',
+      ),
+      'Careers' => array(
+        'url' => 'internal:/careers',
+        'class' => 'careers',
+      ),
+      'Public Records Request' => array(
+        'url' => 'http://www.swfwmd.state.fl.us/about/organization/index.php#public_records',
+        'url-type' => 'external',
+        'class' => 'public-record-request',
+      ),
+      'Privacy & Disclaimer' => array(
+        'url' => 'internal:/about/privacy',
+        'class' => 'privacy-disclaimer',
+      ),
+      'Blog' => array(
+        'url' => 'internal:/blog',
+        'class' => 'blog',
+      ),
+      'ADA Statement' => array(
+        'url' => 'http://www.swfwmd.state.fl.us/about/organization/index.php#ADA',
+        'url-type' => 'external',
+        'class' => 'ada-statement',
+      ),
+      'Contact Us' => array(
+        'url' => 'internal:/contact',
+        'class' => 'contact',
+      ),
+    ),
+    'events-top-menu' => array(
+      'Meeting & Events Calendar' => array(
+        'url' => 'internal:/calendar',
+        'class' => 'calendar',
+      ),
+      'Board Meeting Agendas & Summaries' => array(
+        'url' => 'internal:/calendar/board',
+        'class' => 'calendar-board',
+      ),
+      'Governing Board' => array(
+        'url' => 'internal:/about/governingboard/',
+        'class' => 'governing-board',
+      ),
+    ),
+    'events-topics-menu' => array(
+      'Advisory Committees' => array(
+        'url' => 'internal:/about/advisory_committees/',
+        'class' => 'sdvisory-committees',
+      ),
+      'Governing Board' => array(
+        'url' => 'internal:/about/governingboard/',
+        'class' => 'governing-board',
+      ),
+      'Governing Board Meeting Information' => array(
+        'url' => 'internal:/calendar/meetingfiles/',
+        'class' => 'governing-board-meeting-information',
+      ),
+      'Calendar' => array(
+        'url' => 'internal:/calendar/month',
+        'class' => 'calendar',
+      ),
+      'Conferences, Seminars & Workshops' => array(
+        'url' => 'internal:/calendar/conferences/',
+        'class' => 'calendar-conferences',
+      ),
+      'News Releases' => array(
+        'url' => 'internal:/news',
+        'class' => 'news',
+      ),
+    ),
+  );
+
+  // Save each featured link to the database.
+  foreach ($menus as $menu => $links) {
+    $weight = 0;
+    foreach ($links as $title => $info) {
+      $menu_item = MenuLinkContent::create([
+        'bundle' => 'menu_link_content',
+        'title' => $title,
+        'menu_name' => $menu,
+        'link' => [
+          [
+            'title' => '',
+            'attributes' => [],
+            'options' => [],
+            'uri' => $info['url'],
+          ],
+        ],
+        'parent' => NULL,
+        'description' => '',
+        'rediscover' => '',
+        'weight' => $weight,
+        'expanded' => TRUE,
+      ]);
+      $options = ['attributes' => ['class' => $info['class']]];
+      $menu_item_options = $menu_item->link->first()->options;
+      $menu_item->link->first()->options = array_merge($menu_item_options, $options);
+      $menu_item->save();
+      $weight++;
+    }
+  }
+}
+
+/**
+ * Create Campsite page menu.
+ */
+function swfwmd_menus_update_8002() {
+  global $base_url;
+  $menus = array(
+    'recreation' => array(
+      'Recreation Home' => array(
+        'url' => 'internal:/recreation',
+        'class' => 'recreation',
+      ),
+      'Browse Recreation Sites' => array(
+        'url' => 'internal:/recreation/sites',
+        'class' => 'recreation-sites',
+      ),
+      'Log In / Make a Reservation' => array(
+        'url' => 'internal:/recreation/make-a-reservation',
+        'class' => 'make-a-reservation',
+      ),
+      'Manage Reservations' => array(
+        'url' => 'internal:/recreation/user-reservations',
+        'class' => 'user-reservations',
+      ),
+      'Manage My Account' => array(
+        'url' => 'internal:/user',
+        'class' => 'account',
+      ),
+    ),
+  );
+  // Save each link to the database.
+  foreach ($menus as $menu => $links) {
+    $weight = 0;
+    foreach ($links as $title => $info) {
+      $menu_item = MenuLinkContent::create([
+        'bundle' => 'menu_link_content',
+        'title' => $title,
+        'menu_name' => $menu,
+        'link' => [
+          [
+            'title' => '',
+            'attributes' => [],
+            'options' => [],
+            'uri' => $info['url'],
+          ],
+        ],
+        'parent' => NULL,
+        'description' => '',
+        'rediscover' => '',
+        'weight' => $weight,
+        'expanded' => TRUE,
+      ]);
+      $options = ['attributes' => ['class' => $info['class']]];
+      $menu_item_options = $menu_item->link->first()->options;
+      $menu_item->link->first()->options = array_merge($menu_item_options, $options);
+      $menu_item->save();
+      $weight++;
+    }
+  }
+}
+
+/**
+ * Create Newsroom bottom menu links.
+ */
+function swfwmd_menus_update_8003() {
+  global $base_url;
+  $menus = array(
+    'newsroom-bottom-menu' => array(
+      'View all blog articles' => array(
+        'url' => 'internal:/newsroom?combine=&type%5Bblog_article%5D=blog_article',
+        'class' => 'newsroom-blogs',
+      ),
+      'View all News articles' => array(
+        'url' => 'internal:/newsroom?combine=&type%5Bnews%5D=news',
+        'class' => 'newsroom-articles',
+      ),
+      'View all videos' => array(
+        'url' => 'internal:/newsroom?combine=&type%5Bvideo%5D=video',
+        'class' => 'newsroom-videos',
+      ),
+      'View facebook' => array(
+        'url' => 'internal:/newsroom',
+        'class' => 'newsroom-facebook',
+      ),
+    ),
+  );
+  // Save each link to the database.
+  foreach ($menus as $menu => $links) {
+    $weight = 0;
+    foreach ($links as $title => $info) {
+      $menu_item = MenuLinkContent::create([
+        'bundle' => 'menu_link_content',
+        'title' => $title,
+        'menu_name' => $menu,
+        'link' => [
+          [
+            'title' => '',
+            'attributes' => [],
+            'options' => [],
+            'uri' => $info['url'],
+          ],
+        ],
+        'parent' => NULL,
+        'description' => '',
+        'rediscover' => '',
+        'weight' => $weight,
+        'expanded' => TRUE,
+      ]);
+      $options = ['attributes' => ['class' => $info['class']]];
+      $menu_item_options = $menu_item->link->first()->options;
+      $menu_item->link->first()->options = array_merge($menu_item_options, $options);
+      $menu_item->save();
+      $weight++;
+    }
+  }
+}
+
+/**
+ * Add login/logout links in the main menu.
+ */
+function swfwmd_menus_update_8004() {
+  global $base_url;
+  $menus = array(
+    'main' => array(
+      'Profile' => array(
+        'url' => 'internal:/user/login',
+        'class' => 'login',
+        'weight' => '90',
+      ),
+      'Logout' => array(
+        'url' => 'internal:/user/logout',
+        'class' => 'logout',
+        'weight' => '90',
+      ),
+    ),
+  );
+  // Save each link to the database.
+  foreach ($menus as $menu => $links) {
+    $weight = 0;
+    foreach ($links as $title => $info) {
+      $menu_item = MenuLinkContent::create([
+        'bundle' => 'menu_link_content',
+        'title' => $title,
+        'menu_name' => $menu,
+        'link' => [
+          [
+            'title' => '',
+            'attributes' => [],
+            'options' => [],
+            'uri' => $info['url'],
+          ],
+        ],
+        'parent' => NULL,
+        'description' => '',
+        'rediscover' => '',
+        'weight' => $info['weight'],
+        'expanded' => TRUE,
+      ]);
+      $options = ['attributes' => ['class' => $info['class']]];
+      $menu_item_options = $menu_item->link->first()->options;
+      $menu_item->link->first()->options = array_merge($menu_item_options, $options);
+      $menu_item->save();
+      $weight++;
+    }
+  }
+}
+
+/**
+ * Create Publications top menu links.
+ *
+ */
+function swfwmd_menus_update_8005() {
+  global $base_url;
+  $menus = array(
+    'publications-top-menu' => array(
+      'Search all documents' => array(
+        'url' => 'internal:/resources/free-publications',
+        'class' => 'all-publications',
+      ),
+      'View your documents' => array(
+        'url' => 'internal:/user',
+        'class' => 'user-documents',
+      ),
+      'View your history' => array(
+        'url' => 'internal:/user',
+        'class' => 'user-orders',
+      ),
+      'Login / Register' => array(
+        'url' => 'internal:/user/login',
+        'class' => 'user-login-register',
+      ),
+      'Manage My Account' => array(
+        'url' => 'internal:/user',
+        'class' => 'user-manage-account',
+      ),
+    ),
+  );
+  // Save each link to the database.
+  foreach ($menus as $menu => $links) {
+    $weight = 0;
+    foreach ($links as $title => $info) {
+      $menu_item = MenuLinkContent::create([
+        'bundle' => 'menu_link_content',
+        'title' => $title,
+        'menu_name' => $menu,
+        'link' => [
+          [
+            'title' => '',
+            'attributes' => [],
+            'options' => [],
+            'uri' => $info['url'],
+          ],
+        ],
+        'parent' => NULL,
+        'description' => '',
+        'rediscover' => '',
+        'weight' => $weight,
+        'expanded' => TRUE,
+      ]);
+      $options = ['attributes' => ['class' => $info['class']]];
+      $menu_item_options = $menu_item->link->first()->options;
+      $menu_item->link->first()->options = array_merge($menu_item_options, $options);
+      $menu_item->save();
+      $weight++;
+    }
+  }
+}
+
+/**
+ * Create Springs top menu links.
+ */
+function swfwmd_menus_update_8006() {
+  global $base_url;
+  $menus = array(
+    'springs-top-menu' => array(
+      'Springs Intro' => array(
+        'url' => 'internal:/springs',
+        'class' => 'springs',
+      ),
+      'Learn About Springs' => array(
+        'url' => 'internal:/springs/about',
+        'class' => 'springs-about',
+      ),
+      'Threats to Springs' => array(
+        'url' => 'internal:/springs/threats',
+        'class' => 'spring-threats',
+      ),
+      'Protecting Springs' => array(
+        'url' => 'internal:/springs/protect',
+        'class' => 'springs-protect',
+      ),
+      'Events' => array(
+        'url' => 'internal:/springs/events',
+        'class' => 'springs-events',
+      ),
+      'Springs Resources' => array(
+        'url' => 'internal:/springs/resources',
+        'class' => 'springs-resources',
+      ),
+    ),
+  );
+  // Save each link to the database.
+  foreach ($menus as $menu => $links) {
+    $weight = 0;
+    foreach ($links as $title => $info) {
+      $menu_item = MenuLinkContent::create([
+        'bundle' => 'menu_link_content',
+        'title' => $title,
+        'menu_name' => $menu,
+        'link' => [
+          [
+            'title' => '',
+            'attributes' => [],
+            'options' => [],
+            'uri' => $info['url'],
+          ],
+        ],
+        'parent' => NULL,
+        'description' => '',
+        'rediscover' => '',
+        'weight' => $weight,
+        'expanded' => TRUE,
+      ]);
+      $options = ['attributes' => ['class' => $info['class']]];
+      $menu_item_options = $menu_item->link->first()->options;
+      $menu_item->link->first()->options = array_merge($menu_item_options, $options);
+      $menu_item->save();
+      $weight++;
+    }
+  }
+}
+
+/**
+ * Add business menu to frontpage menu.
+ */
+function swfwmd_menus_update_8007() {
+  global $base_url;
+  $menus = array(
+    'front-page-menu' => array(
+      'Business' => array(
+        'url' => 'internal:/business',
+        'class' => 'business',
+        'weight' => '2',
+      ),
+    ),
+  );
+
+  // Save each featured link to the database.
+  foreach ($menus as $menu => $links) {
+    $weight = 0;
+    foreach ($links as $title => $info) {
+      $menu_item = MenuLinkContent::create([
+        'bundle' => 'menu_link_content',
+        'title' => $title,
+        'menu_name' => $menu,
+        'link' => [
+          [
+            'title' => '',
+            'attributes' => [],
+            'options' => [],
+            'uri' => $info['url'],
+          ],
+        ],
+        'parent' => NULL,
+        'description' => '',
+        'rediscover' => '',
+        'weight' => $info['weight'],
+        'expanded' => TRUE,
+      ]);
+      $options = ['attributes' => ['class' => $info['class']]];
+      $menu_item_options = $menu_item->link->first()->options;
+      $menu_item->link->first()->options = array_merge($menu_item_options, $options);
+      $menu_item->save();
+      $weight++;
+    }
+  }
+}
+
+/**
+ * Change menu links paths.
+ */
+function swfwmd_menus_update_8008() {
+
+  // Newsroom.
+  $link_news1 = MenuLinkContent::load(9);
+  $link_news1->link->uri = 'internal:/about/newsroom';
+  $link_news1->save();
+  $link_news2 = MenuLinkContent::load(11);
+  $link_news2->link->uri = 'internal:/about/newsroom';
+  $link_news2->save();
+  $link_news3 = MenuLinkContent::load(33);
+  $link_news3->link->uri = 'internal:/about/newsroom?combine=&type%5Bblog_article%5D=blog_article';
+  $link_news3->save();
+  $link_news4 = MenuLinkContent::load(34);
+  $link_news4->link->uri = 'internal:/about/newsroom?combine=&type%5Bnews%5D=news';
+  $link_news4->save();
+  $link_news5 = MenuLinkContent::load(35);
+  $link_news5->link->uri = 'internal:/about/newsroom?combine=&type%5Bvideo%5D=video';
+  $link_news5->save();
+  $link_news6 = MenuLinkContent::load(36);
+  $link_news6->link->uri = 'internal:/about/newsroom';
+  $link_news6->save();
+
+  // Springs
+  $link_spring1 = MenuLinkContent::load(44);
+  $link_spring1->link->uri = 'internal:/projects/springs';
+  $link_spring1->save();
+  $link_spring2 = MenuLinkContent::load(45);
+  $link_spring2->link->uri = 'internal:/projects/springs/about';
+  $link_spring2->save();
+  $link_spring3 = MenuLinkContent::load(46);
+  $link_spring3->link->uri = 'internal:/projects/springs/threats';
+  $link_spring3->save();
+  $link_spring4 = MenuLinkContent::load(47);
+  $link_spring4->link->uri = 'internal:/projects/springs/protect';
+  $link_spring4->save();
+  $link_spring5 = MenuLinkContent::load(48);
+  $link_spring5->link->uri = 'internal:/projects/springs/events';
+  $link_spring5->save();
+  $link_spring6 = MenuLinkContent::load(49);
+  $link_spring6->link->uri = 'internal:/projects/springs/resources';
+  $link_spring6->save();
+}
+
+/**
+ * Adding menus according to sitemap.
+ */
+function swfwmd_menus_update_8009() {
+  global $base_url;
+
+  // Identify the menu items we want to delete from main menu.
+  $about_menu = MenuLinkContent::load(7);
+  $recreation_menu = MenuLinkContent::load(8);
+  $newsroom_menu = MenuLinkContent::load(9);
+  $blog_menu = MenuLinkContent::load(10);
+
+  // Identify extra Business menu
+  $extra_about_menu = MenuLinkContent::load(50);
+
+  // Identify original Business menu in frontpage menu.
+  $about_menu2 = MenuLinkContent::load(3);
+
+  // Delete the menu items from main.
+  if ($about_menu) {
+    $about_menu->delete();
+  }
+  if ($recreation_menu) {
+    $recreation_menu->delete();
+  }
+  if ($newsroom_menu) {
+    $newsroom_menu->delete();
+  }
+  if ($blog_menu) {
+    $blog_menu->delete();
+  }
+  if ($extra_about_menu) {
+    $extra_about_menu->delete();
+  }
+
+  // Enable original About menu in frontpage menu.
+  $about_menu2->enabled = 1;
+  $about_menu2->save();
+
+  $menus = [
+    'main' => [
+      'About' => [
+        'uri' => 'internal:/about',
+        'title' => 'About',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'About',
+        'rediscover' => '',
+        'children' => [
+          'About the District' => [
+            'uri' => 'internal:/about/about-the-district',
+            'title' => 'About the District',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'About the District',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Business & Finance' => [
+            'uri' => 'internal:/about/business-and-finance',
+            'title' => 'Business & Finance',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Business & Finance',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Careers' => [
+            'uri' => 'internal:/about/careers',
+            'title' => 'Careers',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Careers',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Meetings & Event Calendar' => [
+            'uri' => 'internal:/about/calendar',
+            'title' => 'Meetings & Event Calendar',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Meetings & Event Calendar',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Newsroom' => [
+            'uri' => 'internal:/about/newsroom',
+            'title' => 'Newsroom',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Newsroom',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Contact Us' => [
+            'uri' => 'internal:/about/contact',
+            'title' => 'Contact Us',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Contact Us',
+            'rediscover' => '',
+            'children' => [],
+          ],
+        ],
+      ],
+      'Residents' => [
+        'uri' => 'internal:/residents',
+        'title' => 'Residents',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'Residents',
+        'rediscover' => '',
+        'children' => [
+          'Education' => [
+            'uri' => 'internal:/residents/education',
+            'title' => 'Education',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Education',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Water Conservation' => [
+            'uri' => 'internal:/residents/water-conservation',
+            'title' => 'Water Conservation',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Water Conservation',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Florida Friendly Landscaping' => [
+            'uri' => 'internal:/residents/florida-friendly-landscaping',
+            'title' => 'Florida Friendly Landscaping',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Florida Friendly Landscaping',
+            'rediscover' => '',
+            'children' => [],
+          ],
+        ],
+      ],
+      'Business' => [
+        'uri' => 'internal:/business',
+        'title' => 'Business',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'Business',
+        'rediscover' => '',
+        'children' => [
+          'E-Permitting' => [
+            'uri' => 'internal:/business/permits',
+            'title' => 'E-Permitting',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'E-Permitting',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Agriculture' => [
+            'uri' => 'internal:/business/agriculture',
+            'title' => 'Agriculture',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Agriculture',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Water Conservation' => [
+            'uri' => 'internal:/business/water-conservation',
+            'title' => 'Water Conservation',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Water Conservation',
+            'rediscover' => '',
+            'children' => [],
+          ],
+        ],
+      ],
+      'Programs & Projects' => [
+        'uri' => 'internal:/programs-projects',
+        'title' => 'Programs & Projects',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'Programs & Projects',
+        'rediscover' => '',
+        'children' => [
+          'Projects' => [
+            'uri' => 'internal:/programs-projects/projects',
+            'title' => 'Projects',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Projects',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Springs' => [
+            'uri' => 'internal:/programs-projects/springs',
+            'title' => 'Springs',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Springs',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Farms' => [
+            'uri' => 'internal:/programs-projects/farms',
+            'title' => 'Farms',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Farms',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Romp' => [
+            'uri' => 'internal:/programs-projects/romp',
+            'title' => 'Romp',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Romp',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Swim' => [
+            'uri' => 'internal:/programs-projects/swim',
+            'title' => 'Swim',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Swim',
+            'rediscover' => '',
+            'children' => [],
+          ],
+        ],
+      ],
+      'Resources' => [
+        'uri' => 'internal:/resources',
+        'title' => 'Resources',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'Resources',
+        'rediscover' => '',
+        'children' => [
+          'Free Publications' => [
+            'uri' => 'internal:/resources/free-publications',
+            'title' => 'Free Publications',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Free Publications',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Data & Maps' => [
+            'uri' => 'internal:/resources/data-and-maps',
+            'title' => 'Data & Maps',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Data & Maps',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Weather & Hydrology' => [
+            'uri' => 'internal:/resources/weather-and-hydrology',
+            'title' => 'Weather & Hydrology',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Weather & Hydrology',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Plans & Reports' => [
+            'uri' => 'internal:/resources/plans-and-reports',
+            'title' => 'Plans & Reports',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Plans & Reports',
+            'rediscover' => '',
+            'children' => [],
+          ],
+        ],
+      ],
+      'Recreation' => [
+        'uri' => 'internal:/recreation',
+        'title' => 'Recreation',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'Recreation',
+        'rediscover' => '',
+        'children' => [
+          'Areas' => [
+            'uri' => 'internal:/recreation/sites',
+            'title' => 'Areas',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Areas',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Activities' => [
+            'uri' => 'internal:/recreation/activities',
+            'title' => 'Activities',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Activities',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Reservations' => [
+            'uri' => 'internal:/recreation/reservations',
+            'title' => 'Reservations',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Reservations',
+            'rediscover' => '',
+            'children' => [],
+          ],
+        ],
+      ],
+    ],
+  ];
+
+  // Save each link to the database.
+  foreach ($menus as $menu_name => $links) {
+    _swfwmd_menus_create_update($menu_name, $links);
+  }
+}
+
+/**
+ * Adding menus according to sitemap.
+ */
+function swfwmd_menus_update_8010() {
+  global $base_url;
+
+  $menus = [
+    'main' => [
+      'About' => [
+        'uri' => 'internal:/about',
+        'old_title' => 'About',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'About',
+        'rediscover' => '',
+        'children' => [
+          'About the District' => [
+            'uri' => 'internal:/about/about-the-district',
+            'old_title' => 'About the District',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'About the District',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Business & Finance' => [
+            'uri' => 'internal:/about/business',
+            'old_title' => 'Business & Finance',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Business & Finance',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Careers' => [
+            'uri' => 'internal:/about/careers',
+            'old_title' => 'Careers',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Careers',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Meetings & Event Calendar' => [
+            'uri' => 'internal:/about/calendar',
+            'old_title' => 'Meetings & Event Calendar',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Meetings & Event Calendar',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Newsroom' => [
+            'uri' => 'internal:/about/newsroom',
+            'old_title' => 'Newsroom',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Newsroom',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Contact Us' => [
+            'uri' => 'internal:/about/contact',
+            'old_title' => 'Contact Us',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Contact Us',
+            'rediscover' => '',
+            'children' => [],
+          ],
+        ],
+      ],
+      'Residents' => [
+        'uri' => 'internal:/residents',
+        'old_title' => 'Residents',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'Residents',
+        'rediscover' => '',
+        'children' => [
+          'Education' => [
+            'uri' => 'internal:/residents/education',
+            'old_title' => 'Education',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Education',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Water Conservation' => [
+            'uri' => 'internal:/conservation',
+            'old_title' => 'Water Conservation',
+            'old_uri' => 'internal:/residents/water-conservation',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Water Conservation',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Florida-Friendly Landscaping' => [
+            'uri' => 'internal:/florida-friendly',
+            'old_title' => 'Florida Friendly Landscaping',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Florida Friendly Landscaping',
+            'rediscover' => '',
+            'children' => [],
+          ],
+        ],
+      ],
+      'Business' => [
+        'uri' => 'internal:/business',
+        'old_title' => 'Business',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'Business',
+        'rediscover' => '',
+        'children' => [
+          'E-Permitting' => [
+            'uri' => 'internal:/business/permits',
+            'old_title' => 'E-Permitting',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'E-Permitting',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Agriculture' => [
+            'uri' => 'internal:/agriculture',
+            'old_title' => 'Agriculture',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Agriculture',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Water Conservation' => [
+            'uri' => 'internal:/conservation',
+            'old_title' => 'Water Conservation',
+            'old_uri' => 'internal:/business/water-conservation',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Water Conservation',
+            'rediscover' => '',
+            'children' => [],
+          ],
+        ],
+      ],
+      'Programs & Projects' => [
+        'uri' => 'internal:/projects',
+        'old_title' => 'Programs & Projects',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'Programs & Projects',
+        'rediscover' => '',
+        'children' => [
+          'Projects' => [
+            'uri' => 'internal:/projects/projects',
+            'old_title' => 'Projects',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Projects',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Springs' => [
+            'uri' => 'internal:/projects/springs',
+            'old_title' => 'Springs',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Springs',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Farms' => [
+            'uri' => 'internal:/projects/farms',
+            'old_title' => 'Farms',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Farms',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Romp' => [
+            'uri' => 'internal:/projects/romp',
+            'old_title' => 'Romp',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Romp',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Swim' => [
+            'uri' => 'internal:/projects/swim',
+            'old_title' => 'Swim',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Swim',
+            'rediscover' => '',
+            'children' => [],
+          ],
+        ],
+      ],
+      'Resources' => [
+        'uri' => 'internal:/resources',
+        'old_title' => 'Resources',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'Resources',
+        'rediscover' => '',
+        'children' => [
+          'Free Publications' => [
+            'uri' => 'internal:/resources/free-publications',
+            'old_title' => 'Free Publications',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Free Publications',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Data & Maps' => [
+            'uri' => 'internal:/resources/data',
+            'old_title' => 'Data & Maps',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Data & Maps',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Weather & Hydrology' => [
+            'uri' => 'internal:/hydrology',
+            'old_title' => 'Weather & Hydrology',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Weather & Hydrology',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Plans & Reports' => [
+            'uri' => 'internal:/resources/plans-and-reports',
+            'old_title' => 'Plans & Reports',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Plans & Reports',
+            'rediscover' => '',
+            'children' => [],
+          ],
+        ],
+      ],
+      'Recreation' => [
+        'uri' => 'internal:/recreation',
+        'old_title' => 'Recreation',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'Recreation',
+        'rediscover' => '',
+        'children' => [
+          'Areas' => [
+            'uri' => 'internal:/recreation/sites',
+            'old_title' => 'Areas',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Areas',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Activities' => [
+            'uri' => 'internal:/recreation/activities',
+            'old_title' => 'Activities',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Activities',
+            'rediscover' => '',
+            'children' => [],
+          ],
+          'Reservations' => [
+            'uri' => 'internal:/recreation/reservations',
+            'old_title' => 'Reservations',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Reservations',
+            'rediscover' => '',
+            'children' => [],
+          ],
+        ],
+      ],
+    ],
+  ];
+
+  // Save each link to the database.
+  foreach ($menus as $menu_name => $links) {
+    _swfwmd_menus_create_update($menu_name, $links);
+  }
+}
+
+/**
+ * Add menu item for "Documents and Reports" page.
+ */
+function swfwmd_menus_update_8011() {
+  global $base_url;
+
+  $menus = [
+    'main' => [
+      'Documents and Reports' => [
+        'uri' => 'internal:/projects/mfl/documents-and-reports',
+        'title' => 'Documents and Reports',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'Documents and Reports',
+        'rediscover' => '',
+        'children' => [],
+      ],
+    ],
+  ];
+
+  // Save each link to the database.
+  foreach ($menus as $menu_name => $links) {
+    _swfwmd_menus_create_update($menu_name, $links);
+  }
+}
+
+/**
+ * Delete custom Profile and logout menus.
+ */
+function swfwmd_menus_update_8012() {
+  $menu_login_id = 37;
+  $menu_logout_id = 38;
+
+  $menu_login = MenuLinkContent::load($menu_login_id);
+  $menu_login->delete();
+
+  $menu_logout = MenuLinkContent::load($menu_logout_id);
+  $menu_logout->delete();
+}
+
+/**
+ * Change Springs Top Menu items.
+ */
+function swfwmd_menus_update_8013() {
+
+  $springs_intro = MenuLinkContent::load(44);
+  $springs_intro->link->uri = 'internal:/projects/springs/learn-about-west-central-floridas-springs';
+  $springs_intro->save();
+
+  $springs_learnabout = MenuLinkContent::load(45);
+  $springs_learnabout->link->uri = 'internal:/projects/springs/how-are-floridas-springs-threatened';
+  $springs_learnabout->save();
+
+  $springs_threats = MenuLinkContent::load(46);
+  $springs_threats->link->uri = 'internal:/projects/springs/protecting-floridas-springs';
+  $springs_threats->save();
+
+  $springs_protect = MenuLinkContent::load(47);
+  $springs_protect->link->uri = 'internal:/projects/springs/springs-event-calendar';
+  $springs_protect->save();
+
+  $springs_events = MenuLinkContent::load(48);
+  $springs_events->link->uri = 'internal:/projects/springs/meet-the-springs-experts';
+  $springs_events->save();
+
+  $springs_resources = MenuLinkContent::load(49);
+  $springs_resources->enabled = 0;
+  $springs_resources->save();
+}
+
+/**
+ * Adding menu item for calendar.
+ */
+function swfwmd_menus_update_8014() {
+  global $base_url;
+
+  $menus = [
+    'main' => [
+      'About' => [
+        'uri' => 'internal:/about',
+        'old_title' => 'About',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'About',
+        'rediscover' => '',
+        'children' => [
+          'Meetings & Event Calendar' => [
+            'uri' => 'internal:/about/calendar/month',
+            'old_title' => 'Meetings & Event Calendar',
+            'class' => '',
+            'attributes' => [],
+            'options' => [],
+            'description' => 'Meetings & Event Calendar',
+            'rediscover' => '',
+            'children' => [],
+          ],
+        ],
+      ],
+    ],
+  ];
+
+  // Save link to the database.
+  foreach ($menus as $menu_name => $links) {
+    _swfwmd_menus_create_update($menu_name, $links);
+  }
+}
+
+/**
+ * Adding menu item Activity Details in secondary menu 'recreation'.
+ * (SWFWMD-706).
+ */
+function swfwmd_menus_update_8015() {
+  global $base_url;
+
+  $menus = [
+    'recreation' => [
+      'Activity Details' => [
+        'uri' => 'internal:/recreation/activity-details',
+        'old_title' => '',
+        'class' => '',
+        'attributes' => [],
+        'options' => [],
+        'description' => 'Learn more about activity details',
+        'rediscover' => '',
+        'weight' => '5',
+        'children' => [],
+      ],
+    ],
+  ];
+
+  // Save link to the database.
+  foreach ($menus as $menu_name => $links) {
+    _swfwmd_menus_create_update($menu_name, $links);
+  }
+}

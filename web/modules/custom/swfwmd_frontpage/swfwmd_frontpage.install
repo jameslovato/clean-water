@@ -1,0 +1,346 @@
+<?php
+
+/**
+ * @file
+ * Main module file for creating the SWFWMD frontpage.
+ */
+
+use Drupal\node\Entity\Node;
+use Drupal\media_entity\Entity\Media;
+use Drupal\paragraphs\Entity\Paragraph;
+
+
+/**
+  * Implements hook_install().
+  */
+function swfwmd_frontpage_install() {
+  // Define initial schema version.
+  drupal_set_installed_schema_version('swfwmd_frontpage', 8000);
+}
+
+/**
+ * Creating content for the front page.
+ */
+function swfwmd_frontpage_update_8001() {
+
+  // Create Frontpage node as Landing Page and save it.
+  $node_frontpage = Node::create([
+    'type' => 'landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Southwest Florida Water Management District',
+  ]);
+
+  // Set the entity ID.
+  $node_frontpage->nid->value = 1;
+  // Save the node.
+  $node_frontpage->save();
+
+  /*
+   * Create Sublanding pages and add them as references to frontpage.
+   *
+   */
+
+  // Create 4 sublanding pages
+  $node_sub_springs = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Springs',
+    'field_menu_tile_baseline' => 'Learn About Our Springs',
+  ]);
+  $node_sub_springs->save();
+
+  $node_sub_epermitting = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'ePermitting',
+    'field_menu_tile_description' => 'Your resource for fast access to permit information and application.',
+    'field_menu_tile_baseline' => 'Get Your Permits'
+  ]);
+  $node_sub_epermitting->save();
+
+  $node_sub_datamaps = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Data & Maps',
+    'field_menu_tile_description' => 'Current and historical data from demographics to surveys and other.',
+    'field_menu_tile_baseline' => 'Show Me Around'
+  ]);
+  $node_sub_datamaps->save();
+
+  $node_sub_recreation = Node::create([
+    'type' => 'sub_landing_page',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'Recreation',
+    'field_menu_tile_description' => 'Get outside and explore your conservation lands offering campsites, hiking and more.',
+    'field_menu_tile_baseline' => 'Plan a Trip'
+  ]);
+  $node_sub_recreation->save();
+
+  // Build the menu tiles array.
+  $front_menu_tiles = array(
+    '0' => $node_sub_springs->id(),
+    '1' => $node_sub_epermitting->id(),
+    '2' => $node_sub_datamaps->id(),
+    '3' => $node_sub_recreation->id()
+  );
+
+  // Add the Slideshow we just created before.
+  $node_frontpage->field_slideshow->entity = $node_slideshow;
+
+  // Adding the sublanding pages to menu tiles
+  foreach($front_menu_tiles as $front_menu_tile){
+    $node_frontpage->field_menu_tiles_[] = ['target_id' => $front_menu_tile];
+  }
+  // Save the node.
+  $node_frontpage->save();
+}
+
+/**
+ * Create dummy News articles.
+ */
+function swfwmd_frontpage_update_8002() {
+
+  // Add images from module directory and create medias image.
+  $news1_data = file_get_contents(drupal_get_path(module, 'swfwmd_frontpage') . '/images/news1.png');
+  $news1_image = file_save_data($news1_data, 'public://news1.jpg', FILE_EXISTS_REPLACE);
+  $news1_image = Media::create([
+    'bundle' => 'image',
+    'name' => "image news 1",
+    'uid' => 1,
+    'image' => [
+      'target_id' => $news1_image->id(),
+      'alt' => t('this is the alt text'),
+      'title' => t('this is an image'),
+    ],
+    'field_media_in_library' => TRUE,
+  ]);
+  $news1_image->save();
+
+  $news2_data = file_get_contents(drupal_get_path(module, 'swfwmd_frontpage') . '/images/news2.png');
+  $news2_image = file_save_data($news2_data, 'public://news2.jpg', FILE_EXISTS_REPLACE);
+  $news2_image = Media::create([
+    'bundle' => 'image',
+    'name' => "image news 2",
+    'uid' => 1,
+    'image' => [
+      'target_id' => $news2_image->id(),
+      'alt' => t('this is the alt text'),
+      'title' => t('this is an image'),
+    ],
+    'field_media_in_library' => TRUE,
+  ]);
+  $news2_image->save();
+
+  $news3_data = file_get_contents(drupal_get_path(module, 'swfwmd_frontpage') . '/images/news3.png');
+  $news3_image = file_save_data($news3_data, 'public://news3.jpg', FILE_EXISTS_REPLACE);
+  $news3_image = Media::create([
+    'bundle' => 'image',
+    'name' => "image news 3",
+    'uid' => 1,
+    'image' => [
+      'target_id' => $news3_image->id(),
+      'alt' => t('this is the alt text'),
+      'title' => t('this is an image'),
+    ],
+    'field_media_in_library' => TRUE,
+  ]);
+  $news3_image->save();
+
+  // Create News nodes
+  $node_news_1 = Node::create([
+    'type' => 'news',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'News article 1',
+    'field_image' => [
+      'target_id' => $news1_image->id(),
+    ],
+    'body' => 'Monotonectally strategize interoperable relationships vis-a-vis alternative information. Interactively syndicate empowered paradigms before reliable e-commerce.'
+  ]);
+  $node_news_1->save();
+  $node_news_2 = Node::create([
+    'type' => 'news',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'News article 2',
+    'field_image' => [
+      'target_id' => $news2_image->id(),
+    ],
+    'body' => 'Interactively foster visionary paradigms whereas impactful benefits. Professionally procrastinate quality initiatives with e-business collaboration and idea-sharing.'
+  ]);
+  $node_news_2->save();
+  $node_news_3 = Node::create([
+    'type' => 'news',
+    'uid' => 1,
+    'moderation_state' => 'published',
+    'title' => 'News article 3',
+    'field_image' => [
+      'target_id' => $news3_image->id(),
+    ],
+    'body' => 'Uniquely engage quality leadership before 2.0 technology. Authoritatively whiteboard user friendly mindshare for goal-oriented internal or.'
+  ]);
+  $node_news_3->save();
+}
+
+/**
+ * Create video media for hero on frontpage.
+ */
+function swfwmd_frontpage_update_8003() {
+  // Add videos from module directory and create medias image.
+  $video_data = file_get_contents(drupal_get_path(module, 'swfwmd_dummy_content') . '/videos/stream.mp4');
+  $video_file = file_save_data($video_data, 'public://stream.mp4', FILE_EXISTS_REPLACE);
+  $video = Media::create([
+    'bundle' => 'video_local_',
+    'name' => "Video for frontpage",
+    'uid' => 1,
+    'field_video' => [
+      'target_id' => $video_file->id(),
+    ],
+    'field_media_in_library' => TRUE,
+  ]);
+  $video->save();
+
+  // Add the video to the frontpage hero.
+  $node_frontpage = Node::load(1);
+  $node_frontpage->field_video_hero[] = $video->id();
+  $node_frontpage->save();
+}
+
+/**
+ * Add 4 menu tiles to the Frontpage.
+ *
+ */
+function swfwmd_frontpage_update_8004() {
+// Create 4 sublanding pages
+  $paragraph_springs = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Springs',
+    'field_description' => '',
+    'field_link' => array(
+      'uri' => 'internal:/springs',
+      'title' => 'Learn About Our Springs',
+    ),
+  ]);
+  $paragraph_springs->save();
+
+  $paragraph_epermitting = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'ePermitting',
+    'field_description' => 'Your resource for fast access to permit information and application.',
+    'field_link' => array(
+      'uri' => 'internal:/permits',
+      'title' => 'Get Your Permits',
+    ),
+  ]);
+  $paragraph_epermitting->save();
+
+  $paragraph_datamaps = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Data & Maps',
+    'field_description' => 'Current and historical data from demographics to surveys and other.',
+    'field_link' => array(
+      'uri' => 'internal:/data',
+      'title' => 'Show Me Around',
+    ),
+  ]);
+  $paragraph_datamaps->save();
+
+  $paragraph_recreation = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Recreation',
+    'field_description' => 'Get outside and explore your conservation lands offering campsites, hiking and more.',
+    'field_link' => array(
+      'uri' => 'internal:/recreation',
+      'title' => 'Plan a Trip',
+    ),
+  ]);
+  $paragraph_recreation->save();
+
+  // Get the frontpage object.
+  $node_frontpage = Node::load(1);
+
+  // Attach paragraphs to the frontpage.
+  $node_frontpage->field_menu_tile_link->appendItem($paragraph_springs);
+  $node_frontpage->field_menu_tile_link->appendItem($paragraph_epermitting);
+  $node_frontpage->field_menu_tile_link->appendItem($paragraph_datamaps);
+  $node_frontpage->field_menu_tile_link->appendItem($paragraph_recreation);
+
+  // Save the node.
+  $node_frontpage->save();
+}
+
+/**
+ * Add 4 menu tiles to the Frontpage.
+ *
+ */
+function swfwmd_frontpage_update_8005() {
+// Create 4 sublanding pages
+  $paragraph_recreation = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Recreation',
+    'field_description' => 'Let\'s make a nice big leafy tree. We have no limits to our world. We\'re only limited by our imagination. Everybody needs a friend.',
+    'field_link' => array(
+      'uri' => 'internal:/recreation',
+      'title' => 'Plan a Trip',
+    ),
+  ]);
+  $paragraph_recreation->save();
+
+  $paragraph_water_preservation = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Water Conservation',
+    'field_description' => 'We don\'t need any guidelines or formats. All we need to do is just let it flow right out of us. With something so strong, a little bit can go a long way. I thought today we would make a happy little stream that\'s just running through the woods here. When you do it your way you can go anywhere you choose.',
+    'field_link' => array(
+      'uri' => 'internal:/node/1',
+      'title' => 'Start Saving',
+    ),
+  ]);
+  $paragraph_water_preservation->save();
+
+  $paragraph_calendar = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Data & Maps',
+    'field_description' => 'When you do it your way you can go anywhere you choose. Now it\'s beginning to make a little sense.',
+    'field_link' => array(
+      'uri' => 'internal:/calendar',
+      'title' => 'Learn More',
+    ),
+  ]);
+  $paragraph_calendar->save();
+
+  $paragraph_topic = Paragraph::create([
+    'type' => 'menu_tile',
+    'uid' => 1,
+    'field_title' => 'Recreation',
+    'field_description' => 'If we\'re going to have animals around we all have to be concerned about them and take care of them. We must be quiet, soft and gentle. This is gonna be a happy little seascape. It\'s beautiful - and we haven\'t even done anything to it yet. Trees cover up a multitude of sins.',
+    'field_link' => array(
+      'uri' => 'internal:/node/1',
+      'title' => 'See What\'s Happening',
+    ),
+  ]);
+  $paragraph_topic->save();
+
+  // Get the frontpage object.
+  $node_frontpage = Node::load(1);
+
+  // Attach paragraphs to the frontpage.
+  $node_frontpage->field_menu_tiles_frontpage	->appendItem($paragraph_recreation);
+  $node_frontpage->field_menu_tiles_frontpage	->appendItem($paragraph_water_preservation);
+  $node_frontpage->field_menu_tiles_frontpage	->appendItem($paragraph_calendar);
+  $node_frontpage->field_menu_tiles_frontpage	->appendItem($paragraph_topic);
+
+  // Save the node.
+  $node_frontpage->save();
+}
