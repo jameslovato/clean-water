@@ -1,0 +1,46 @@
+swfwmd.admin_index:
+  path: '/admin/config/swfwmd'
+  defaults:
+    _controller: '\Drupal\system\Controller\SystemController::systemAdminMenuBlockPage'
+    _title: 'SWFWMD settings'
+  requirements:
+    _permission: 'access administration pages'
+
+swfwmd.external:
+  path: '/external'
+  defaults:
+    _controller: '\Drupal\swfwmd\Controller\ExternalController::view'
+  requirements:
+    _permission: 'access content'
+
+swfwmd.settings:
+  path: '/admin/config/swfwmd/swfwmd-settings'
+  defaults:
+    _form: '\Drupal\swfwmd\Form\SwfwmdSettings'
+    _title: 'SWFWMD administration'
+  requirements:
+    _permission: 'administer administration settings'
+
+swfwmd.messages:
+  path: '/admin/config/swfwmd/swfwmd-messages'
+  defaults:
+    _form: '\Drupal\swfwmd\Form\SwfwmdSiteMessages'
+    _title: 'SWFWMD site messages'
+  requirements:
+    _permission: 'administer administration settings'
+
+swfwmd.staff:
+  path: '/admin/config/swfwmd/staff-import'
+  defaults:
+    _form: '\Drupal\swfwmd\Form\SwfwmdStaffImport'
+    _title: 'SWFWMD staff import'
+  requirements:
+    _permission: 'administer administration settings'
+
+swfwmd.theme:
+  path: '/admin/config/swfwmd/swfwmd-theme'
+  defaults:
+    _form: '\Drupal\swfwmd\Form\SwfwmdThemeOverrides'
+    _title: 'SWFWMD theme overrides'
+  requirements:
+    _permission: 'administer administration settings'

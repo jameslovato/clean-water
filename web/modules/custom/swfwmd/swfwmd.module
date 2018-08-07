@@ -1,0 +1,2240 @@
+<?php
+
+/**
+ * @file
+ * Main module file for SWFWMD custom module.
+ */
+
+use Drupal\block\Entity\Block;
+use Drupal\Component\Render\MarkupInterface;
+use Drupal\Component\Utility\Random;
+use Drupal\Core\Access\AccessResult;
+use Drupal\Core\Cache\RefinableCacheableDependencyInterface;
+use Drupal\Core\Cache\Cache;
+use Drupal\Core\Datetime\DrupalDateTime;
+use Drupal\Core\Entity\Display\EntityViewDisplayInterface;
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Field\WidgetBase;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Render\BubbleableMetadata;
+use Drupal\Core\Render\Markup;
+use Drupal\Core\Session\AccountInterface;
+use Drupal\Core\Site\Settings;
+use Drupal\swfwmd\Commands\SwfwmdCommands;
+use Drupal\file\Entity\File;
+use Drupal\user\Entity\User;
+use Drupal\views\Plugin\views\query\QueryPluginBase;
+use Drupal\views\ViewExecutable;
+use Drupal\views\Views;
+use Drupal\webform\Entity\WebformSubmission;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Drupal\node\Entity\Node;
+use Drupal\taxonomy\Entity\Term;
+
+/**
+ * Implements hook_block_access().
+ */
+function swfwmd_block_access(Block $block, $operation, AccountInterface $account) {
+  // Remove access from newsroom block if the hero banners are not set.
+  if ($operation == 'view' && $block->id() == 'newsroomhero') {
+    $derivative_id = $block->getPlugin()->getDerivativeId();
+    $block_content = \Drupal::service('entity.repository')->loadEntityByUuid('block_content', $derivative_id);
+    return AccessResult::forbiddenIf(empty($block_content) ||
+      (empty($block_content->field_image_hero->getValue()) &&
+        empty($block_content->field_slideshow_hero->getValue()) &&
+        empty($block_content->field_video_hero->getValue())))
+      ->addCacheableDependency($block);
+  }
+
+  // No opinion.
+  return AccessResult::neutral();
+}
+
+/**
+ * Implements hook_theme().
+ */
+function swfwmd_theme($existing, $type, $theme, $path) {
+  return array(
+    'emergency_message' => array(
+      'variables' => array('content' => NULL)
+    ),
+    'recreation_site_message' => array(
+      'variables' => array('content' => NULL)
+    ),
+    'targeted_message' => array(
+      'variables' => array('content' => NULL)
+    ),
+    'recreation_calendar_grid' => array(
+      'variables' => array (
+        'headers' => NULL,
+        'dates' => NULL,
+        'weeks' => NULL,
+        'days' => NULL,
+        'month' => NULL,
+        'links' => NULL,
+        'title' => NULL,
+      ),
+    ),
+  );
+}
+
+/**
+ * Implements hook_cron().
+ *
+ * Imports user from given endpoint.
+ */
+function swfwmd_cron() {
+  // We check if user import in enabled during cron.
+  $import_user_cron = \Drupal::state()->get('staff_import_cron', 1);
+
+  // Proceed user import if it is.
+  if ($import_user_cron) {
+    $import = new SwfwmdCommands;
+    $import->importStaff('cron');
+  }
+  else {
+    \Drupal::logger('swfwmd')->notice('Staff Import: Skipping staff import based on configuration.');
+  }
+}
+
+/**
+ * Implements hook_entity_type_alter().
+ *
+ * Changes the class and other configuration of the Embed Button entity.
+ */
+function swfwmd_entity_type_alter(array &$entity_types) {
+  if (isset($entity_types['embed_button'])) {
+    $entity_types['embed_button']->setClass('Drupal\swfwmd\EmbedButton');
+    $entity_types['embed_button']->setHandlerClass('form', [
+      'add' => 'Drupal\swfwmd\Form\SwfwmdEmbedButtonForm',
+      'edit' => 'Drupal\swfwmd\Form\SwfwmdEmbedButtonForm',
+      'delete' => 'Drupal\Core\Entity\EntityDeleteForm',
+    ]);
+    $entity_types['embed_button']->set('config_export', [
+      'label',
+      'id',
+      'type_id',
+      'type_settings',
+      'icon_uuid',
+      'icon_uri',
+    ]);
+  }
+}
+
+/**
+ * Implements hook_entity_delete().
+ *
+ * Clears menu local task cache on entity delete.
+ */
+function swfwmd_entity_delete(EntityInterface $entity) {
+  $module_handler = \Drupal::moduleHandler();
+  $module_handler->invokeAll('cache_flush');
+  foreach (Cache::getBins() as $service_id => $cache_backend) {
+    $cache_backend->deleteAll();
+  }
+  \Drupal::service('router.builder')->rebuild();
+}
+
+/**
+ * Implements hook_entity_presave().
+ *
+ * Alter the Splash! School Grants submissions value based on certain conditions.
+ */
+function swfwmd_entity_presave(EntityInterface $entity) {
+  // Make some change if the entity is an instance of WebformSubmission.
+  if ($entity instanceof WebformSubmission) {
+    switch ($entity->bundle()) {
+      case 'splash_school_grants':
+        $status = $entity->getElementData('status');
+
+        // If webform is in draft mode add the 'Draft / Not Completed' status.
+        if ($entity->isDraft() ||
+          (!$entity->original->isDraft() && $status == 'Draft / Not Completed')) {
+          $entity->setElementData('status', 'Draft / Not Completed');
+
+          // Also set the submission to draft so that it can be edited by the submitter.
+          $entity->set('in_draft', TRUE);
+        }
+
+        // If webform is completed and previously has a 'Draft / Not Completed'
+        // status, set it to 'Pending Review' status.
+        if ($entity->isCompleted() && $entity->original->isDraft()) {
+          $entity->setElementData('status', 'Pending Review');
+
+          // Also lock the submission so that it cannot be edited by the submitter.
+          //$entity->set('locked', TRUE);
+          /*
+          // Send mail notifications:
+          $default_message = t('<p>Submitted on [webform_submission:created]</p>
+            <p>Submitted by: [webform_submission:user]</p>
+            <p>Submitted values are:</p>
+            [webform_submission:values]');
+
+          // User Notification.
+          $params = [
+            'mail_key' => 'splash_school_grants_user_notification',
+            'to_mail' => $entity->getOwner()->getEmail(),
+            'from_mail' => \Drupal::config('system.site')->get('mail'),
+            'from_name' => \Drupal::config('system.site')->get('site_name'),
+            'subject' => \Drupal::state()->get('splash_grant_completion_email_subject', t('Splash Grant Application Completed')),
+            'body' => \Drupal::state()->get('splash_grant_completion_email_user', $default_message),
+            'webform_submission' => $entity,
+          ];
+          _swfwmd_mail_send($params);
+
+          // Administrator Notification.
+          $params = [
+            'mail_key' => 'splash_school_grants_admin_notification',
+            'to_mail' => \Drupal::state()->get('splash_grant_admin_email', 'WaterEducation@WaterMatters.org'),
+            'from_mail' => \Drupal::config('system.site')->get('mail'),
+            'from_name' => \Drupal::config('system.site')->get('site_name'),
+            'subject' => \Drupal::state()->get('splash_grant_completion_email_subject', t('Splash Grant Application Completed')),
+            'body' => \Drupal::state()->get('splash_grant_completion_email_admin', $default_message),
+            'webform_submission' => $entity,
+          ];
+          _swfwmd_mail_send($params);
+          */
+        }
+        break;
+
+      case 'public_records_request':
+        $entity->setRemoteAddr('');
+        break;
+
+    }
+  }
+
+  // create a key for displaying updates when a rec site is closed.  - Used as cookie value for dismissing the message
+  if ($entity->bundle() == 'recreation_site') {
+    if ($entity->get('field_closed')->getValue()[0]['value'] && $entity->original->get('field_closed')->getValue()[0]['value'] != 1) {
+      $config = \Drupal::service('config.factory')
+        ->getEditable('recreation_site_alert.settings');
+      $random = new Random();
+      $config->set('recreation_site_alert_key', $random->string(16, TRUE));
+      $config->save();
+    }
+  }
+
+  if ($entity->bundle() == 'site_message') {
+    $config = \Drupal::service('config.factory')
+      ->getEditable('targeted_site_alert.settings');
+    $random = new Random();
+    $config->set('targeted_site_alert_key_' . $entity->id(), $random->string(16, TRUE));
+    $config->save();
+  }
+
+}
+
+/**
+ * Implements hook_entity_save().
+ *
+ * Clears menu local task cache on entity save.
+ */
+function swfwmd_entity_save(EntityInterface $entity) {
+  $module_handler = \Drupal::moduleHandler();
+  $module_handler->invokeAll('cache_flush');
+  foreach (Cache::getBins() as $service_id => $cache_backend) {
+    $cache_backend->deleteAll();
+  }
+  \Drupal::service('router.builder')->rebuild();
+}
+
+/**
+ * Implements hook_entity_view().
+ *
+ * Removes access to product page view when user has no administrative access.
+ * This cannot be done through permissions as anonymous users still need to view
+ * or access product info in listing or views, but not when actually viewing the
+ * product page in full mode.
+ */
+function swfwmd_entity_view(array &$build, EntityInterface $entity, EntityViewDisplayInterface $display, $view_mode) {
+  // Check if user has permissions to administer products.
+  $has_permission = User::load(\Drupal::currentUser()->id())->hasPermission('administer commerce_product');
+
+  if ($entity->getEntityTypeId() == 'commerce_product' &&
+    $view_mode == 'full' && !$has_permission) {
+    throw new AccessDeniedHttpException();
+  }
+
+  // SWFWMD-484: Add closed banner message on the recreation site if it's closed and
+  // indicated why.
+  if ($entity->getEntityTypeId() == 'node' &&
+    $entity->getType() == 'recreation_site' &&
+    $entity->get('field_closed')->value) {
+    drupal_set_message($entity->get('title')->value . t(' closed due to ') . $entity->get('field_closure_reasons')->value, 'error');
+  }
+}
+
+/**
+ * Implements hook_field_widget_WIDGET_TYPE_form_alter().
+ *
+ * Toggles the Attchements based on Attachment type. Show the upload for if the
+ * type is file upload and show the video link and time for video types.
+ */
+function swfwmd_field_widget_entity_reference_paragraphs_form_alter(&$element, FormStateInterface $form_state, $context) {
+  /** @var \Drupal\field\Entity\FieldConfig $field_definition */
+  $field_definition = $context['items']->getFieldDefinition();
+  $field_name = $field_definition->getName();
+
+  if ($field_name == 'field_event_attachment') {
+    $widget_state = WidgetBase::getWidgetState($element['#field_parents'], $field_name, $form_state);
+    $paragraph_instance = $widget_state['paragraphs'][$element['#delta']]['entity'];
+    $paragraph_type = $paragraph_instance->bundle();
+
+    // Determine which paragraph type is being embedded.
+    if ($paragraph_type == 'event_attachment') {
+      $states_field_name = 'field_event_attachement_type';
+      $selector = sprintf('input[name="%s[%d][subform][%s]"]', $field_name, $element['#delta'], $states_field_name);
+
+      // Get the video link term ID.
+      $terms = \Drupal::entityTypeManager()
+        ->getStorage('taxonomy_term')
+        ->loadByProperties(['name' => 'Video link', 'vid' => 'event_attachment']);
+      $term = reset($terms);
+      $term_id = !empty($term) ? $term->id() : 0;
+
+      // Dependent fields.
+      $element['subform']['field_event_attachment']['#states'] = [
+        'visible' => [
+          $selector => ['!value' => $term_id],
+        ],
+        'enabled' => [
+          $selector => ['!value' => $term_id],
+        ],
+      ];
+
+      $element['subform']['field_event_video_link']['#states'] = [
+        'visible' => [
+          $selector => ['value' => $term_id],
+        ],
+        'enabled' => [
+          $selector => ['value' => $term_id],
+        ],
+      ];
+
+      $element['subform']['field_event_video_start']['#states'] = [
+        'visible' => [
+          $selector => ['value' => $term_id],
+        ],
+        'enabled' => [
+          $selector => ['value' => $term_id],
+        ],
+      ];
+
+      $element['subform']['field_event_video_end']['#states'] = [
+        'visible' => [
+          $selector => ['value' => $term_id],
+        ],
+        'enabled' => [
+          $selector => ['value' => $term_id],
+        ],
+      ];
+    }
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function swfwmd_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+  switch ($form_id) {
+    case 'commerce_checkout_flow_multistep_default':
+      // Login pane form.
+      if (isset($form['login'])) {
+        $form['login']['register']['#weight'] = 1;
+
+        $form['login']['guest']['#weight'] = 2;
+        $form['login']['guest']['#attributes'] = [
+          'class' => [
+            'form-wrapper__login-option',
+            'form-wrapper__returning-customer',
+          ],
+        ];
+      }
+
+      // Commerce cart pane form.
+      if (isset($form['shipping_information'])) {
+        $form['#attached']['library'][] = 'swfwmd/commerce.shipping-method';
+
+        $triggering_element = $form_state->getTriggeringElement();
+        // Remove access to the shipping method field if there are no available
+        // options to choose from. This is to avoid errors on the checkout process.
+        if (!isset($form['shipping_information']['shipments'][0]['shipping_method']['widget'][0]['#options']) ||
+          empty($form['shipping_information']['shipments'][0]['shipping_method']['widget'][0]['#options'])) {
+          $form['shipping_information']['shipments'][0]['shipping_method']['widget'][0]['#access'] = FALSE;
+
+          // If the Recalculate button is clicked or triggered, display an error
+          // message if there are no valid options for the shipping method.
+          if (!empty($triggering_element) &&
+            isset($triggering_element['#recalculate']) &&
+            $triggering_element['#recalculate']) {
+            //$user_roles = \Drupal::currentUser()->getRoles();
+
+            //if(!in_array('administrator', $user_roles) && !in_array('order_override', $user_roles)) {
+            drupal_set_message(t('Sorry, your ship to address is outside of the shippable area for the free publications.'), 'error');
+            //}
+          }
+        }
+
+        // Add validation for duplicate date.
+        $form['#validate'][] = '_swfwmd_commerce_checkout_flow_multistep_default_validate';
+      }
+
+      break;
+
+    case  'entity_browser_hero_image_browser_form':
+      // Entity browser for hero image form.
+      $form['#attached']['library'][] = 'lightning_media/browser.styling';
+
+      break;
+
+    case  'entity_browser_documents_form':
+      // Entity browser for hero image form.
+      $form['#attached']['library'][] = 'lightning_media/browser.styling';
+
+      break;
+
+    case  'entity_browser_map_browser_form':
+      // Entity browser for map form.
+      $form['#attached']['library'][] = 'lightning_media/browser.styling';
+
+      break;
+
+    case 'node_event_edit_form':
+    case 'node_event_form':
+      // Node event form library.
+      $form['#attached']['library'][] = 'swfwmd/node.event.form';
+
+      // Remove access to the end date field, for now.
+      $form['field_end_date']['#access'] = FALSE;
+
+      // Make sure to set default value for address Country if not set.
+      if (!isset($form['field_event_location_addr']['widget'][0]['address']['#default_value']['country_code'])
+        || empty($form['field_event_location_addr']['widget'][0]['address']['#default_value']['country_code'])) {
+        $form['field_event_location_addr']['widget'][0]['address']['#default_value']['country_code'] = US;
+      }
+
+      // Add validation for duplicate date.
+      $form['actions']['submit']['#validate'][] = '_swfwmd_node_event_form_validate';
+
+      break;
+
+    case 'node_recreation_site_edit_form':
+    case 'node_recreation_site_form':
+      // Add recreation reservation email library.
+      $form['#attached']['library'][] = 'swfwmd/recreation.reservation.emails';
+
+      // Set reservation acknowledgment subject field default value if empty.
+      if (isset($form['field_recreation_thanks_subject']['widget'][0]['value']) &&
+        empty($form['field_recreation_thanks_subject']['widget'][0]['value']['#default_value'])) {
+        $reservation_acknowledged_subject = \Drupal::state()->get('reservation_acknowledgment_subject', t('Reservation Acknowledged'));
+        $form['field_recreation_thanks_subject']['widget'][0]['value']['#default_value'] = $reservation_acknowledged_subject;
+      }
+      // Set reservation acknowledgment message field default value if empty.
+      if (isset($form['field_recreation_thanks_message']['widget'][0]) &&
+        empty($form['field_recreation_thanks_message']['widget'][0]['#default_value'])) {
+        $reservation_acknowledged_message = \Drupal::state()->get('reservation_acknowledgment_message', t('Your reservation has been acknowledged.'));
+        $form['field_recreation_thanks_message']['widget'][0]['#default_value'] = $reservation_acknowledged_message;
+      }
+      // Set reservation approval subject field default value if empty.
+      if (isset($form['field_recreation_approve_subject']['widget'][0]['value']) &&
+        empty($form['field_recreation_approve_subject']['widget'][0]['value']['#default_value'])) {
+        $reservation_approval_subject = \Drupal::state()->get('reservation_approval_subject', t('Reservation Approved'));
+        $form['field_recreation_approve_subject']['widget'][0]['value']['#default_value'] = $reservation_approval_subject;
+      }
+      // Set reservation approval message field default value if empty.
+      if (isset($form['field_recreation_approve_message']['widget'][0]) &&
+        empty($form['field_recreation_approve_message']['widget'][0]['#default_value'])) {
+        $reservation_approval_message = \Drupal::state()->get('reservation_approval_message', t('Your reservation has been approved.'));
+        $form['field_recreation_approve_message']['widget'][0]['#default_value'] = $reservation_approval_message;
+      }
+      // Set reservation denial subject field default value if empty.
+      if (isset($form['field_recreation_deny_subject']['widget'][0]['value']) &&
+        empty($form['field_recreation_deny_subject']['widget'][0]['value']['#default_value'])) {
+        $reservation_denial_subject = \Drupal::state()->get('reservation_denial_subject', t('Reservation Denied'));
+        $form['field_recreation_deny_subject']['widget'][0]['value']['#default_value'] = $reservation_denial_subject;
+      }
+      // Set reservation denial message field default value if empty.
+      if (isset($form['field_recreation_deny_message']['widget'][0]) &&
+        empty($form['field_recreation_deny_message']['widget'][0]['#default_value'])) {
+        $reservation_denial_message = \Drupal::state()->get('reservation_denial_message', t('Your reservation has been denied.'));
+        $form['field_recreation_deny_message']['widget'][0]['#default_value'] = $reservation_denial_message;
+      }
+      // Set reservation denial subject field default value if empty.
+      if (isset($form['field_recreation_cancel_subject']['widget'][0]['value']) &&
+        empty($form['field_recreation_cancel_subject']['widget'][0]['value']['#default_value'])) {
+        $reservation_cancellation_subject = \Drupal::state()->get('reservation_cancellation_subject', t('Reservation Cancelled'));
+        $form['field_recreation_cancel_subject']['widget'][0]['value']['#default_value'] = $reservation_cancellation_subject;
+      }
+      // Set reservation denial message field default value if empty.
+      if (isset($form['field_recreation_cancel_message']['widget'][0]) &&
+        empty($form['field_recreation_cancel_message']['widget'][0]['#default_value'])) {
+        $reservation_cancellation_message = \Drupal::state()->get('reservation_cancellation_message', t('Your reservation has been cancelled.'));
+        $form['field_recreation_cancel_message']['widget'][0]['#default_value'] = $reservation_cancellation_message;
+      }
+
+      $form['token_help'] = array(
+        '#theme' => 'token_tree_link',
+        '#weight' => 100,
+        '#prefix' => t('<div class="description">The email notification subject and message can support <em>Node</em>, <em>User</em>, and <em>Global</em> tokens. The <em>Node</em> tokens will be based on the reservation node and the <em>User</em> tokens will be based on the guest information user.</div>'),
+        '#token_types' => array('node', 'user'),
+      );
+      $form['#group_children']['token_help'] = 'group_reservation_email_set';
+
+    case 'node_blog_article_edit_form':
+    case 'node_blog_article_form':
+    case 'node_landing_page_edit_form':
+    case 'node_landing_page_form':
+    case 'node_news_edit_form':
+    case 'node_news_form':
+    case 'node_page_edit_form':
+    case 'node_page_form':
+      // Add validation on the hero fields.
+      $form['actions']['submit']['#validate'][] = '_swfwmd_node_hero_form_validate';
+
+      break;
+
+    case 'views_exposed_form':
+      // Image gallery search exposed filters.
+      if ($form['#id'] == 'views-exposed-form-images-gallery-page-1') {
+        // Category field.
+        $category_options = $form['category_']['#options'];
+        asort($category_options);
+        $form['category']['#options'] = $category_options;
+
+        // Category field.
+        $image_tag_options = $form['image_tag']['#options'];
+        asort($image_tag_options);
+        $form['image_tag']['#options'] = $image_tag_options;
+      }
+      // Free publications and recreation sites search exposed filters.
+      if ($form['#id'] == 'views-exposed-form-publications-listing-page-1' ||
+        $form['#id'] == 'views-exposed-form-recreation-sites-search-page-2') {
+        // Add placeholder text on the keyword textfield.
+        $form['keywords']['#attributes']['placeholder'] = t('&#xf002; Enter search term');
+        $form['keywords']['#attributes']['aria-label'] = 'Enter Search Term';
+
+        // This field should not be visible but should be still be available.
+        $form['sort_by']['#prefix'] = '<div style="display: none;">';
+        $form['sort_by']['#suffix'] = '</div>';
+        $form['sort_order']['#prefix'] = '<div style="display: none;">';
+        $form['sort_order']['#suffix'] = '</div>';
+      }
+      if ($form['#id'] == 'views-exposed-form-publications-listing-page-1') {
+        $subject_options = $form['subject']['#options'];
+        asort($subject_options);
+        $form['subject']['#options'] = $subject_options;
+      }
+      if ($form['#id'] == 'views-exposed-form-recreation-sites-search-page-2') {
+        $activities_options = $form['activities']['#options'];
+        asort($activities_options);
+        $form['activities']['#options'] = $activities_options;
+      }
+      // Calendar page exposed filters.
+      if ($form['#id'] == 'views-exposed-form-content-field-start-date-on-calendar-page-month' ||
+        $form['#id'] == 'views-exposed-form-content-field-start-date-on-calendar-page-1') {
+        $form['event_type']['#attributes']['aria-label'] = 'Select an Event Type';
+
+        // Temporarily hide Event type filter on the calendar views.
+        $form['event_type']['#access'] = FALSE;
+      }
+      // Admin reservation management page exposed filters.
+      if ($form['#id'] == 'views-exposed-form-reservations-page-admin-reservations') {
+        $area_options = [
+          '' => t('- Any -')
+        ];
+        // Get a list of options for the area field.
+        $area_query = \Drupal::entityQuery('node')
+          ->condition('type', 'recreation_site')
+          ->sort('title', 'ASC');
+        $area_nids = $area_query->execute();
+        $area_nodes = entity_load_multiple('node', $area_nids);
+
+        foreach ($area_nodes as $area_node) {
+          $area_options[$area_node->id()] = $area_node->getTitle();
+        }
+
+        $form['area']['#type'] = 'select';
+        $form['area']['#multiple'] = FALSE;
+        $form['area']['#size'] = NULL;
+        $form['area']['#options'] = $area_options;
+
+        $guest_options = [
+          '' => t('- Any -')
+        ];
+        // Get a list of options for the guest field.
+        $guest_query = \Drupal::entityQuery('user')
+          ->condition('uid', 0, '>')
+          ->sort('name', 'ASC');
+        $guest_uids = $guest_query->execute();
+        $guest_users = entity_load_multiple('user', $guest_uids);
+
+        foreach ($guest_users as $guest_user) {
+          $guest_options[$guest_user->id()] = $guest_user->getUsername();
+        }
+
+        $form['guest']['#type'] = 'select';
+        $form['guest']['#multiple'] = FALSE;
+        $form['guest']['#size'] = NULL;
+        $form['guest']['#options'] = $guest_options;
+      }
+
+      break;
+
+    case 'webform_submission_assessment_surplus_land_comments_add_form':
+    case 'webform_submission_assessment_surplus_land_comments_edit_form':
+    case 'webform_submission_assessment_surplus_land_comments_edit_all_form':
+      // Add states to the Other County field.
+      $form['elements']['comment_form']['county_other']['#states'] = [
+        'visible' => [
+          'select[name="county"]' => ['value' => 777],
+        ],
+        'enabled' => [
+          'select[name="county"]' => ['value' => 777],
+        ],
+        'required' => [
+          'select[name="county"]' => ['value' => 777],
+        ],
+        'hidden' => [
+          'select[name="county"]' => ['!value' => 777],
+        ],
+      ];
+
+      // Add states to the Representing Organization field.
+      $form['elements']['comment_form']['representing_org']['#states'] = [
+        'visible' => [
+          'select[name="representing"]' => ['value' => 'org'],
+        ],
+        'enabled' => [
+          'select[name="representing"]' => ['value' => 'org'],
+        ],
+        'required' => [
+          'select[name="representing"]' => ['value' => 'org'],
+        ],
+        'hidden' => [
+          'select[name="representing"]' => ['!value' => 'org'],
+        ],
+      ];
+
+      break;
+
+    case 'webform_submission_classroom_challenge_add_form':
+    case 'webform_submission_classroom_challenge_edit_form':
+    case 'webform_submission_classroom_challenge_edit_all_form':
+      // JS library for classroom challenge form.
+      $form['#attached']['library'][] = 'swfwmd/webform.classroom.challenge';
+
+      break;
+
+    case 'webform_submission_erp_pre_app_meeting_request_add_form':
+    case 'webform_submission_erp_pre_app_meeting_request_edit_form':
+    case 'webform_submission_erp_pre_app_meeting_request_edit_all_form':
+      // JS library for ERP pre-allication meeting request.
+      $form['#attached']['library'][] = 'swfwmd/webform.preapp';
+
+      // Add states to the Preferred section.
+      $form['elements']['preferred']['preferred_date']['#states'] = [
+        'visible' => [
+          'select[name="preferred_location"]' => ['!value' => ''],
+        ],
+        'enabled' => [
+          'select[name="preferred_location"]' => ['!value' => ''],
+        ],
+        //'required' => [
+        //'select[name="preferred_location"]' => ['!value' => ''],
+        //],
+        'hidden' => [
+          'select[name="preferred_location"]' => ['value' => ''],
+        ],
+      ];
+
+      $form['elements']['preferred']['preferred_time']['#states'] = [
+        'visible' => [
+          'select[name="preferred_location"]' => ['!value' => ''],
+        ],
+        'enabled' => [
+          'select[name="preferred_location"]' => ['!value' => ''],
+        ],
+        //'required' => [
+        //'select[name="preferred_location"]' => ['!value' => ''],
+        //],
+        'hidden' => [
+          'select[name="preferred_location"]' => ['value' => ''],
+        ],
+      ];
+
+      $form['elements']['preferred']['preferred_first']['#states'] = [
+        'visible' => [
+          'select[name="preferred_location"]' => ['!value' => ''],
+        ],
+        'enabled' => [
+          'select[name="preferred_location"]' => ['!value' => ''],
+        ],
+        //'required' => [
+        //'select[name="preferred_location"]' => ['!value' => ''],
+        //],
+        'hidden' => [
+          'select[name="preferred_location"]' => ['value' => ''],
+        ],
+      ];
+
+      $form['elements']['preferred']['group_preferred_staff']['#states'] = [
+        'visible' => [
+          'select[name="preferred_location"]' => ['value' => 'Tampa'],
+        ],
+        'enabled' => [
+          'select[name="preferred_location"]' => ['value' => 'Tampa'],
+        ],
+        'hidden' => [
+          'select[name="preferred_location"]' => ['!value' => 'Tampa'],
+        ],
+      ];
+
+      // Add states to the Alternate section.
+      $form['elements']['alternate']['alternate_date']['#states'] = [
+        'visible' => [
+          'select[name="alternate_location"]' => ['!value' => ''],
+        ],
+        'enabled' => [
+          'select[name="alternate_location"]' => ['!value' => ''],
+        ],
+        //'required' => [
+        //'select[name="alternate_location"]' => ['!value' => ''],
+        //],
+        'hidden' => [
+          'select[name="alternate_location"]' => ['value' => ''],
+        ],
+      ];
+
+      $form['elements']['alternate']['alternate_time']['#states'] = [
+        'visible' => [
+          'select[name="alternate_location"]' => ['!value' => ''],
+        ],
+        'enabled' => [
+          'select[name="alternate_location"]' => ['!value' => ''],
+        ],
+        //'required' => [
+        //'select[name="alternate_location"]' => ['!value' => ''],
+        //],
+        'hidden' => [
+          'select[name="alternate_location"]' => ['value' => ''],
+        ],
+      ];
+
+      $form['elements']['alternate']['alternate_first']['#states'] = [
+        'visible' => [
+          'select[name="alternate_location"]' => ['!value' => ''],
+        ],
+        'enabled' => [
+          'select[name="alternate_location"]' => ['!value' => ''],
+        ],
+        //'required' => [
+        //'select[name="alternate_location"]' => ['!value' => ''],
+        //],
+        'hidden' => [
+          'select[name="alternate_location"]' => ['value' => ''],
+        ],
+      ];
+
+      $form['elements']['alternate']['group_alternate_staff']['#states'] = [
+        'visible' => [
+          'select[name="alternate_location"]' => ['value' => 'Tampa'],
+        ],
+        'enabled' => [
+          'select[name="alternate_location"]' => ['value' => 'Tampa'],
+        ],
+        'hidden' => [
+          'select[name="alternate_location"]' => ['!value' => 'Tampa'],
+        ],
+      ];
+
+      // Add states to the Optional section.
+      $form['elements']['optional']['optional_date']['#states'] = [
+        'visible' => [
+          'select[name="optional_location"]' => ['!value' => ''],
+        ],
+        'enabled' => [
+          'select[name="optional_location"]' => ['!value' => ''],
+        ],
+        //'required' => [
+        //'select[name="optional_location"]' => ['!value' => ''],
+        //],
+        'hidden' => [
+          'select[name="optional_location"]' => ['value' => ''],
+        ],
+      ];
+
+      $form['elements']['optional']['optional_time']['#states'] = [
+        'visible' => [
+          'select[name="optional_location"]' => ['!value' => ''],
+        ],
+        'enabled' => [
+          'select[name="optional_location"]' => ['!value' => ''],
+        ],
+        //'required' => [
+        //'select[name="optional_location"]' => ['!value' => ''],
+        //],
+        'hidden' => [
+          'select[name="optional_location"]' => ['value' => ''],
+        ],
+      ];
+
+      $form['elements']['optional']['optional_first']['#states'] = [
+        'visible' => [
+          'select[name="optional_location"]' => ['!value' => ''],
+        ],
+        'enabled' => [
+          'select[name="optional_location"]' => ['!value' => ''],
+        ],
+        //'required' => [
+        //'select[name="optional_location"]' => ['!value' => ''],
+        //],
+        'hidden' => [
+          'select[name="optional_location"]' => ['value' => ''],
+        ],
+      ];
+
+      $form['elements']['optional']['group_optional_staff']['#states'] = [
+        'visible' => [
+          'select[name="optional_location"]' => ['value' => 'Tampa'],
+        ],
+        'enabled' => [
+          'select[name="optional_location"]' => ['value' => 'Tampa'],
+        ],
+        'hidden' => [
+          'select[name="optional_location"]' => ['!value' => 'Tampa'],
+        ],
+      ];
+
+      // Add states to the total projects field.
+      $form['elements']['total_projects']['#states'] = [
+        'visible' => [
+          '[name="multiple_projects"]' => ['value' => 'Yes'],
+        ],
+        'enabled' => [
+          '[name="multiple_projects"]' => ['value' => 'Yes'],
+        ],
+        'required' => [
+          '[name="multiple_projects"]' => ['value' => 'Yes'],
+        ],
+        'hidden' => [
+          '[name="multiple_projects"]' => ['!value' => 'Yes'],
+        ],
+      ];
+
+      // Add states to the Manatee County options.
+      $form['elements']['county_manatee']['#states'] = [
+        'visible' => [
+          'select[name="county"]' => ['value' => 8],
+        ],
+        'enabled' => [
+          'select[name="county"]' => ['value' => 8],
+        ],
+        'required' => [
+          'select[name="county"]' => ['value' => 8],
+        ],
+        'hidden' => [
+          'select[name="county"]' => ['!value' => 8],
+        ],
+      ];
+
+      // Add states to the Other County option.
+      $form['elements']['county_other']['#states'] = [
+        'visible' => [
+          'select[name="county"]' => ['value' => 777],
+        ],
+        'enabled' => [
+          'select[name="county"]' => ['value' => 777],
+        ],
+        'required' => [
+          'select[name="county"]' => ['value' => 777],
+        ],
+        'hidden' => [
+          'select[name="county"]' => ['!value' => 777],
+        ],
+      ];
+
+      // Add states to the WUP Number field.
+      $form['elements']['group_project_info']['wup_number']['#states'] = [
+        'visible' => [
+          ':input[name="project_info[wup:]"]' => ['checked' => TRUE],
+        ],
+        'enabled' => [
+          ':input[name="project_info[wup:]"]' => ['checked' => TRUE],
+        ],
+        'required' => [
+          ':input[name="project_info[wup:]"]' => ['checked' => TRUE],
+        ],
+        'hidden' => [
+          ':input[name="project_info[wup:]"]' => ['unchecked' => TRUE],
+        ],
+      ];
+
+      // Add states to the ERP Number field.
+      $form['elements']['group_project_info']['erp_number']['#states'] = [
+        'visible' => [
+          ':input[name="project_info[erp:]"]' => ['checked' => TRUE],
+        ],
+        'enabled' => [
+          ':input[name="project_info[erp:]"]' => ['checked' => TRUE],
+        ],
+        'required' => [
+          ':input[name="project_info[erp:]"]' => ['checked' => TRUE],
+        ],
+        'hidden' => [
+          ':input[name="project_info[erp:]"]' => ['unchecked' => TRUE],
+        ],
+      ];
+
+      // Add states to the Previous Number field.
+      $form['elements']['group_project_info']['previous_number']['#states'] = [
+        'visible' => [
+          ':input[name="project_info[previous:]"]' => ['checked' => TRUE],
+        ],
+        'enabled' => [
+          ':input[name="project_info[previous:]"]' => ['checked' => TRUE],
+        ],
+        'required' => [
+          ':input[name="project_info[previous:]"]' => ['checked' => TRUE],
+        ],
+        'hidden' => [
+          ':input[name="project_info[previous:]"]' => ['unchecked' => TRUE],
+        ],
+      ];
+
+      // Add states to the Compliance Number field.
+      $form['elements']['group_project_info']['compliance_number']['#states'] = [
+        'visible' => [
+          ':input[name="project_info[compliance:]"]' => ['checked' => TRUE],
+        ],
+        'enabled' => [
+          ':input[name="project_info[compliance:]"]' => ['checked' => TRUE],
+        ],
+        'required' => [
+          ':input[name="project_info[compliance:]"]' => ['checked' => TRUE],
+        ],
+        'hidden' => [
+          ':input[name="project_info[compliance:]"]' => ['unchecked' => TRUE],
+        ],
+      ];
+
+      // Add states to the Stubent Board Number field.
+      $form['elements']['group_project_info']['sb_number']['#states'] = [
+        'visible' => [
+          ':input[name="project_info[school_board:]"]' => ['checked' => TRUE],
+        ],
+        'enabled' => [
+          ':input[name="project_info[school_board:]"]' => ['checked' => TRUE],
+        ],
+        'required' => [
+          ':input[name="project_info[school_board:]"]' => ['checked' => TRUE],
+        ],
+        'hidden' => [
+          ':input[name="project_info[school_board:]"]' => ['unchecked' => TRUE],
+        ],
+      ];
+
+      // Add states to the EDTM Number field.
+      $form['elements']['group_project_info']['edtm_number']['#states'] = [
+        'visible' => [
+          ':input[name="project_info[fdot:]"]' => ['checked' => TRUE],
+        ],
+        'enabled' => [
+          ':input[name="project_info[fdot:]"]' => ['checked' => TRUE],
+        ],
+        'required' => [
+          ':input[name="project_info[fdot:]"]' => ['checked' => TRUE],
+        ],
+        'hidden' => [
+          ':input[name="project_info[fdot:]"]' => ['unchecked' => TRUE],
+        ],
+      ];
+
+      // Add states to the Other field.
+      $form['elements']['group_project_info']['other_specify']['#states'] = [
+        'visible' => [
+          ':input[name="project_info[other:]"]' => ['checked' => TRUE],
+        ],
+        'enabled' => [
+          ':input[name="project_info[other:]"]' => ['checked' => TRUE],
+        ],
+        'required' => [
+          ':input[name="project_info[other:]"]' => ['checked' => TRUE],
+        ],
+        'hidden' => [
+          ':input[name="project_info[other:]"]' => ['unchecked' => TRUE],
+        ],
+      ];
+
+      break;
+
+    case 'webform_submission_pledge_to_save_10_add_form':
+    case 'webform_submission_pledge_to_save_10_edit_form':
+    case 'webform_submission_pledge_to_save_10_edit_all_form':
+      // Retrieve the data input value when available. This value was obtained
+      // from another third party form called Water Usage Calculator.
+      $data = isset($_POST['data']) ? $_POST['data'] : NULL;
+
+      // Set hidden data input if posted data is a valid JSON.
+      if (is_string($data) && is_array(json_decode($data, TRUE))) {
+        $form['elements']['group_form']['data']['#value'] = $data;
+
+        $data_decode = json_decode($data, TRUE);
+
+        // If total is provided in the JSON then change label of first checkbox.
+        if (isset($data_decode['total_individual_percent']) &&
+          !empty($data_decode['total_individual_percent']) &&
+          is_numeric($data_decode['total_individual_percent'])) {
+          // Webform options does not support translate: Update the first option
+          // with key "10" to a label with appropriate total.
+          $form['elements']['group_form']['pledge_activities']['#options']['10'] = 'Reduce my <strong>daily water use</strong> by <span>' . $data_decode['total_individual_percent'] . '</span> gallons (10%)';
+        }
+      }
+
+      break;
+
+    case 'webform_submission_splash_school_grants_add_form':
+    case 'webform_submission_splash_school_grants_edit_form':
+    case 'webform_submission_splash_school_grants_edit_all_form':
+      // Splash! School Grants webform.
+      $form['#attached']['library'][] = 'swfwmd/webform.splash.grant';
+      $status_access = TRUE;
+      $project_reports_access = TRUE;
+      $is_closed = true;
+
+      $webform_submission = $form_state->getFormObject()->getEntity();
+      $has_admin_permission = User::load(\Drupal::currentUser()->id())->hasPermission('administer webform submission');
+      $has_user_permission = false;
+      if(!$has_admin_permission) {
+        $webform = \Drupal::entityTypeManager()->getStorage('webform')->load('splash_school_grants');
+        $is_closed = $webform->isClosed();
+        if(!$is_closed) {
+          $has_user_permission = User::load(\Drupal::currentUser()->id())->hasPermission('view own webform submission');
+        }
+      }
+
+      if(!empty($form['elements']['page_4']['budget_item']["#default_value"]) && ($has_admin_permission || $has_user_permission)) {
+        foreach($form['elements']['page_4']['budget_item']["#default_value"] as $index=>$items_array) {
+          foreach($items_array as $key=>$val) {
+            if($key != 'budget_total' && $key != 'budget_description') {
+              $item_key = $key . "_eval";
+              $form['elements']['page_4']['evaluation']["#default_value"][$index][$item_key] = $val;
+            } else if($key == 'budget_total') {
+              $form['elements']['page_4']['evaluation']["#default_value"][$index]['budget_eval_total'] = $val;
+            }
+          }
+        }
+      }
+
+      if (isset($form['actions']['submit'])) {
+        // Change submit button for all completed submission.
+        if ($webform_submission instanceof WebformSubmission &&
+          $webform_submission->isCompleted() &&
+          isset($form['actions']['submit'])) {
+          $form['actions']['submit']['#value'] = t('Submit');
+        }
+        else {
+          $form['actions']['submit']['#value'] = t('Submit for Review');
+        }
+        $form['actions']['submit']['#submit'][] = '_swfwmd_webform_submission_splash_school_grants_submit';
+      }
+
+      if ($has_admin_permission) {
+        // Set default value to 'Draft / Not Completed';
+        if (!isset($form['elements']['school_grant_application']['group_actions']['status']['#default_value']) ||
+          empty($form['elements']['school_grant_application']['group_actions']['status']['#default_value'])) {
+          $form['elements']['school_grant_application']['group_actions']['status']['#default_value'] = 'Draft / Not Completed';
+        }
+      }
+      else {
+        // Remove access to form if submissions is completed and user has no
+        // administrative access.
+        if ($webform_submission instanceof WebformSubmission &&
+          $webform_submission->isCompleted() &&
+          $webform_submission->getElementData('status') != 'Awarded' &&
+          $is_closed) {
+          $form['#access'] = FALSE;
+        }
+
+        // Disable all fields when user is editing the Project Peports field
+        // on an awarded grant.
+        if ($webform_submission instanceof WebformSubmission &&
+          $webform_submission->isCompleted() &&
+          $webform_submission->getElementData('status') == 'Awarded') {
+
+          $form['elements']['school_grant_application']['school_name']['#disabled'] = TRUE;
+          $form['elements']['school_grant_application']['school_mailing_address']['#disabled'] = TRUE;
+          $form['elements']['school_grant_application']['address']['#disabled'] = TRUE;
+          $form['elements']['school_grant_application']['phone']['#disabled'] = TRUE;
+          $form['elements']['school_grant_application']['applicant_name']['#disabled'] = TRUE;
+          $form['elements']['school_grant_application']['school_type_wrapper']['school_type']['#disabled'] = TRUE;
+          $form['elements']['school_grant_application']['school_type_wrapper']['school_title']['#disabled'] = TRUE;
+          $form['elements']['school_grant_application']['number_of_students']['#disabled'] = TRUE;
+          $form['elements']['school_grant_application']['school_grade_wrapper']['grade_levels']['#disabled'] = TRUE;
+          $form['elements']['school_grant_application']['school_grade_wrapper']['received_grant_before']['#disabled'] = TRUE;
+          $form['elements']['page_2']['summary']['#disabled'] = TRUE;
+          $form['elements']['page_2']['activities']['#disabled'] = TRUE;
+          $form['elements']['page_2']['project_message']['#disabled'] = TRUE;
+          $form['elements']['page_2']['stem_related']['#disabled'] = TRUE;
+          $form['elements']['page_3']['the_nature_of_science']['body_of_knowledge_the_nature_of_science']['#disabled'] = TRUE;
+          $form['elements']['page_3']['the_nature_of_science']['practice_of_science']['#disabled'] = TRUE;
+          $form['elements']['page_3']['the_nature_of_science']['characteristics_of_scientific_knowledge']['#disabled'] = TRUE;
+          $form['elements']['page_3']['the_nature_of_science']['role_of_theories_laws_hypotheses_and_models']['#disabled'] = TRUE;
+          $form['elements']['page_3']['the_nature_of_science']['science_and_society']['#disabled'] = TRUE;
+          $form['elements']['page_3']['earth_and_space_science']['body_of_knowledge_earth_and_space_science']['#disabled'] = TRUE;
+          $form['elements']['page_3']['earth_and_space_science']['earth_in_space_and_time']['#disabled'] = TRUE;
+          $form['elements']['page_3']['earth_and_space_science']['earth_structures']['#disabled'] = TRUE;
+          $form['elements']['page_3']['earth_and_space_science']['earth_systems_and_patterns']['#disabled'] = TRUE;
+          $form['elements']['page_3']['physical_science']['body_of_knowledge_physical_science']['#disabled'] = TRUE;
+          $form['elements']['page_3']['physical_science']['properties_of_matter']['#disabled'] = TRUE;
+          $form['elements']['page_3']['physical_science']['changes_in_matter']['#disabled'] = TRUE;
+          $form['elements']['page_3']['physical_science']['forms_of_energy']['#disabled'] = TRUE;
+          $form['elements']['page_3']['physical_science']['energy_transfer_and_transformations']['#disabled'] = TRUE;
+          $form['elements']['page_3']['physical_science']['motion_of_objects']['#disabled'] = TRUE;
+          $form['elements']['page_3']['physical_science']['forces_and_changes_in_motion']['#disabled'] = TRUE;
+          $form['elements']['page_3']['life_science']['body_of_knowledge_life_science']['#disabled'] = TRUE;
+          $form['elements']['page_3']['life_science']['organization_and_development_of_living_organisms']['#disabled'] = TRUE;
+          $form['elements']['page_3']['life_science']['diversity_and_evolution_of_living_organisms']['#disabled'] = TRUE;
+          $form['elements']['page_3']['life_science']['heredity_and_reproduction']['#disabled'] = TRUE;
+          $form['elements']['page_3']['life_science']['interdependence']['#disabled'] = TRUE;
+          $form['elements']['page_3']['life_science']['matter_and_energy_transformations']['#disabled'] = TRUE;
+          $form['elements']['page_4']['budget_item']['#disabled'] = TRUE;
+        }
+
+        // Remove access to Status field if current user has no webform
+        // submissions administration permision.
+        $form['elements']['school_grant_application']['group_actions']['status']['#access'] = FALSE;
+        $status_access = FALSE;
+      }
+
+      // Remove access to Project Reports field.
+      $form['elements']['school_grant_application']['group_actions']['project_reports']['#access'] = FALSE;
+      $project_reports_access = FALSE;
+
+      // Add back permissions if application is already completed, the Status is
+      // Awarded and the user editing the submission is the author.
+      if ($webform_submission instanceof WebformSubmission &&
+        $webform_submission->isCompleted() &&
+        $webform_submission->getElementData('status') == 'Awarded' &&
+        \Drupal::currentUser()->id() == $webform_submission->getOwner()->id()) {
+        $form['elements']['school_grant_application']['group_actions']['project_reports']['#access'] = TRUE;
+        $project_reports_access = TRUE;
+      }
+
+      // Add states to Project Reports field if user has access to it and the
+      // Status field.
+      if ($form['elements']['school_grant_application']['group_actions']['project_reports']['#access']) {
+        $form['elements']['school_grant_application']['group_actions']['project_reports']['#states'] = [
+          'visible' => [
+            'select[name="status"]' => ['value' => 'Awarded'],
+          ],
+          'enabled' => [
+            'select[name="status"]' => ['value' => 'Awarded'],
+          ],
+          'hidden' => [
+            'select[name="status"]' => ['!value' => 'Awarded'],
+          ],
+        ];
+      }
+
+      if (!$status_access && !$project_reports_access) {
+        // Do not display the Actions fieldset if user has no items on it.
+        $form['elements']['school_grant_application']['group_actions']['#access'] = FALSE;
+      }
+      break;
+
+    case 'webform_submission_structure_operational_guidelines_add_form':
+    case 'webform_submission_structure_operational_guidelines_edit_form':
+    case 'webform_submission_structure_operational_guidelines_edit_all_form':
+      // JS library for structure operational guidelines comments form.
+      $form['#attached']['library'][] = 'swfwmd/webform.structure.operational.guidelines';
+
+      // Add states to the Other County field.
+      $form['elements']['comment_form']['personal_information']['county_other']['#states'] = [
+        'visible' => [
+          'select[name="county"]' => ['value' => 777],
+        ],
+        'enabled' => [
+          'select[name="county"]' => ['value' => 777],
+        ],
+        'required' => [
+          'select[name="county"]' => ['value' => 777],
+        ],
+        'hidden' => [
+          'select[name="county"]' => ['!value' => 777],
+        ],
+      ];
+
+      break;
+
+    case 'webform_submission_water_conservation_pledge_add_form':
+    case 'webform_submission_water_conservation_pledge_edit_form':
+    case 'webform_submission_water_conservation_pledge_edit_all_form':
+      // JS library for water conservation pledge form.
+      $form['#attached']['library'][] = 'swfwmd/webform.water.conservation.pledge';
+
+      break;
+
+    case 'webform_submission_well_complaint_form_add_form':
+    case 'webform_submission_well_complaint_form_edit_form':
+    case 'webform_submission_well_complaint_form_edit_all_form':
+      // JS library for ERP pre-allication meeting request.
+      $form['#attached']['library'][] = 'swfwmd/webform.well.complaint';
+
+      // Add states to the Confirm Email field.
+      $form['elements']['form']['contact_information']['email_confirm']['#states'] = [
+        'visible' => [
+          ':input[name="email"]' => ['!empty' => TRUE],
+        ],
+        'enabled' => [
+          ':input[name="email"]' => ['!empty' => TRUE],
+        ],
+        'required' => [
+          ':input[name="email"]' => ['!empty' => TRUE],
+        ],
+        'hidden' => [
+          ':input[name="email"]' => ['empty' => TRUE],
+        ],
+      ];
+
+      // Add states to the Send a Copy field.
+      $form['elements']['form']['contact_information']['email_copy']['#states'] = [
+        'visible' => [
+          ':input[name="email"]' => ['!empty' => TRUE],
+        ],
+        'enabled' => [
+          ':input[name="email"]' => ['!empty' => TRUE],
+        ],
+        'required' => [
+          ':input[name="email"]' => ['!empty' => TRUE],
+        ],
+        'hidden' => [
+          ':input[name="email"]' => ['empty' => TRUE],
+        ],
+      ];
+
+      // Add states to the Other Relationship field.
+      $form['elements']['form']['well_information']['relationship_other']['#states'] = [
+        'visible' => [
+          'select[name="relationship"]' => ['value' => 'Other'],
+        ],
+        'enabled' => [
+          'select[name="relationship"]' => ['value' => 'Other'],
+        ],
+        'required' => [
+          'select[name="relationship"]' => ['value' => 'Other'],
+        ],
+        'hidden' => [
+          'select[name="relationship"]' => ['!value' => 'Other'],
+        ],
+      ];
+
+      // Add states to the Well Problem field.
+      $form['elements']['form']['well_information']['producing_water_problem']['#states'] = [
+        'visible' => [
+          ':input[name="producing_water"]' => ['value' => 'Yes'],
+        ],
+        'enabled' => [
+          ':input[name="producing_water"]' => ['value' => 'Yes'],
+        ],
+        'required' => [
+          ':input[name="producing_water"]' => ['value' => 'Yes'],
+        ],
+        'hidden' => [
+          ':input[name="producing_water"]' => ['!value' => 'Yes'],
+        ],
+      ];
+
+      // Add states to the Other Well Problem field.
+      $form['elements']['form']['well_information']['producing_water_problem_other']['#states'] = [
+        'visible' => [
+          ':input[name="producing_water"]' => ['value' => 'Yes'],
+          ':input[name="producing_water_problem[Other]"]' => ['checked' => TRUE],
+        ],
+        'enabled' => [
+          ':input[name="producing_water"]' => ['value' => 'Yes'],
+          ':input[name="producing_water_problem[Other]"]' => ['checked' => TRUE],
+        ],
+        'required' => [
+          ':input[name="producing_water"]' => ['value' => 'Yes'],
+          ':input[name="producing_water_problem[Other]"]' => ['checked' => TRUE],
+        ],
+        'hidden' => [
+          ':input[name="producing_water"]' => ['!value' => 'Yes'],
+          ':input[name="producing_water_problem[Other]"]' => ['unchecked' => TRUE],
+        ],
+      ];
+
+      // Add states to the Previous Problem Details field.
+      $form['elements']['form']['well_information']['problem_before_details']['#states'] = [
+        'visible' => [
+          ':input[name="problem_before"]' => ['value' => 'Yes'],
+        ],
+        'enabled' => [
+          ':input[name="problem_before"]' => ['value' => 'Yes'],
+        ],
+        'required' => [
+          ':input[name="problem_before"]' => ['value' => 'Yes'],
+        ],
+        'hidden' => [
+          ':input[name="problem_before"]' => ['!value' => 'Yes'],
+        ],
+      ];
+
+      // Add states to the Previous Problem Date field.
+      $form['elements']['form']['well_information']['problem_before_date']['#states'] = [
+        'visible' => [
+          ':input[name="problem_before"]' => ['value' => 'Yes'],
+        ],
+        'enabled' => [
+          ':input[name="problem_before"]' => ['value' => 'Yes'],
+        ],
+        'hidden' => [
+          ':input[name="problem_before"]' => ['!value' => 'Yes'],
+        ],
+      ];
+
+      // Add states to the Repairs and Replaced field.
+      $form['elements']['form']['well_information']['replaced_well']['#states'] = [
+        'visible' => [
+          ':input[name="problem_before"]' => ['value' => 'Yes'],
+        ],
+        'enabled' => [
+          ':input[name="problem_before"]' => ['value' => 'Yes'],
+        ],
+        'required' => [
+          ':input[name="problem_before"]' => ['value' => 'Yes'],
+        ],
+        'hidden' => [
+          ':input[name="problem_before"]' => ['!value' => 'Yes'],
+        ],
+      ];
+
+      // Add states to the Repairs and Replaced Date field.
+      $form['elements']['form']['well_information']['replaced_well_date']['#states'] = [
+        'visible' => [
+          ':input[name="problem_before"]' => ['value' => 'Yes'],
+          ':input[name="replaced_well"]' => ['value' => 'Yes'],
+        ],
+        'enabled' => [
+          ':input[name="problem_before"]' => ['value' => 'Yes'],
+          ':input[name="replaced_well"]' => ['value' => 'Yes'],
+        ],
+        'hidden' => [
+          ':input[name="problem_before"]' => ['!value' => 'Yes'],
+          ':input[name="replaced_well"]' => ['!value' => 'Yes'],
+        ],
+      ];
+
+      // Add states to the Well Depth field.
+      $form['elements']['form']['well_information']['depth_feet_value']['#states'] = [
+        'visible' => [
+          ':input[name="depth_feet"]' => ['value' => 'Yes'],
+        ],
+        'enabled' => [
+          ':input[name="depth_feet"]' => ['value' => 'Yes'],
+        ],
+        'required' => [
+          ':input[name="depth_feet"]' => ['value' => 'Yes'],
+        ],
+        'hidden' => [
+          ':input[name="depth_feet"]' => ['!value' => 'Yes'],
+        ],
+      ];
+
+      // Add states to the Casing Depth field.
+      $form['elements']['form']['well_information']['casing_feet_value']['#states'] = [
+        'visible' => [
+          ':input[name="casing_feet"]' => ['value' => 'Yes'],
+        ],
+        'enabled' => [
+          ':input[name="casing_feet"]' => ['value' => 'Yes'],
+        ],
+        'required' => [
+          ':input[name="casing_feet"]' => ['value' => 'Yes'],
+        ],
+        'hidden' => [
+          ':input[name="casing_feet"]' => ['!value' => 'Yes'],
+        ],
+      ];
+
+      // Add states to the Pump Depth field.
+      $form['elements']['form']['well_information']['pump_feet_value']['#states'] = [
+        'visible' => [
+          ':input[name="pump_feet"]' => ['value' => 'Yes'],
+        ],
+        'enabled' => [
+          ':input[name="pump_feet"]' => ['value' => 'Yes'],
+        ],
+        'required' => [
+          ':input[name="pump_feet"]' => ['value' => 'Yes'],
+        ],
+        'hidden' => [
+          ':input[name="pump_feet"]' => ['!value' => 'Yes'],
+        ],
+      ];
+
+      // Add states to the Well Diameter field.
+      $form['elements']['form']['well_information']['diameter_inches_value']['#states'] = [
+        'visible' => [
+          ':input[name="diameter_inches"]' => ['value' => 'Yes'],
+        ],
+        'enabled' => [
+          ':input[name="diameter_inches"]' => ['value' => 'Yes'],
+        ],
+        'required' => [
+          ':input[name="diameter_inches"]' => ['value' => 'Yes'],
+        ],
+        'hidden' => [
+          ':input[name="diameter_inches"]' => ['!value' => 'Yes'],
+        ],
+      ];
+
+      // Add states to the Well Diameter field.
+      $form['elements']['form']['well_information']['repairs_before_details']['#states'] = [
+        'visible' => [
+          ':input[name="repairs_before"]' => ['value' => 'Yes'],
+        ],
+        'enabled' => [
+          ':input[name="repairs_before"]' => ['value' => 'Yes'],
+        ],
+        'required' => [
+          ':input[name="repairs_before"]' => ['value' => 'Yes'],
+        ],
+        'hidden' => [
+          ':input[name="repairs_before"]' => ['!value' => 'Yes'],
+        ],
+      ];
+
+      // Add validation to the custom field.
+      $form['actions']['submit']['#validate'][] = '_swfwmd_webform_submission_well_complaint_form_validate';
+      break;
+
+    case 'user_form':
+    case 'user_register_form':
+      if (isset($form['field_user_staff']['widget']['value'])) {
+        // Add states to the staff user profile fields.
+        $form['field_user_nick_name']['widget'][0]['value']['#states'] = [
+          'visible' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'enabled' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'required' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'hidden' => [
+            ':input[name="field_user_staff[value]"]' => ['unchecked' => TRUE],
+          ],
+        ];
+
+        $form['field_user_section_name']['widget'][0]['value']['#states'] = [
+          'visible' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'enabled' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'required' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'hidden' => [
+            ':input[name="field_user_staff[value]"]' => ['unchecked' => TRUE],
+          ],
+        ];
+
+        $form['field_user_department_name']['widget'][0]['value']['#states'] = [
+          'visible' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'enabled' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'required' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'hidden' => [
+            ':input[name="field_user_staff[value]"]' => ['unchecked' => TRUE],
+          ],
+        ];
+
+        $form['field_user_phone']['widget'][0]['value']['#states'] = [
+          'visible' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'enabled' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'required' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'hidden' => [
+            ':input[name="field_user_staff[value]"]' => ['unchecked' => TRUE],
+          ],
+        ];
+
+        $form['field_user_phone_extension']['widget'][0]['value']['#states'] = [
+          'visible' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'enabled' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'required' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'hidden' => [
+            ':input[name="field_user_staff[value]"]' => ['unchecked' => TRUE],
+          ],
+        ];
+
+        $form['field_user_fax']['widget'][0]['value']['#states'] = [
+          'visible' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'enabled' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'required' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'hidden' => [
+            ':input[name="field_user_staff[value]"]' => ['unchecked' => TRUE],
+          ],
+        ];
+
+        $form['field_user_office_location']['widget'][0]['value']['#states'] = [
+          'visible' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'enabled' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'required' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'hidden' => [
+            ':input[name="field_user_staff[value]"]' => ['unchecked' => TRUE],
+          ],
+        ];
+
+
+        $form['field_user_job_title']['widget'][0]['value']['#states'] = [
+          'visible' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'enabled' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'required' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'hidden' => [
+            ':input[name="field_user_staff[value]"]' => ['unchecked' => TRUE],
+          ],
+        ];
+
+
+        $form['field_user_mail_code']['widget'][0]['value']['#states'] = [
+          'visible' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'enabled' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'required' => [
+            ':input[name="field_user_staff[value]"]' => ['checked' => TRUE],
+          ],
+          'hidden' => [
+            ':input[name="field_user_staff[value]"]' => ['unchecked' => TRUE],
+          ],
+        ];
+      }
+
+      break;
+
+  }
+}
+
+/**
+ * Validation callback: Checks shipping method value if any.
+ */
+function _swfwmd_commerce_checkout_flow_multistep_default_validate(array &$form, FormStateInterface $form_state) {
+  $values = $form_state->getValues();
+
+  // Add a validation for the shipping method field to check if it has any
+  // available option value that is usually stored on key or delta 0.
+  if (!isset($values['shipping_information']['shipments'][0]['shipping_method'][0]) ||
+    empty($values['shipping_information']['shipments'][0]['shipping_method'][0])) {
+    //$user_roles = \Drupal::currentUser()->getRoles();
+
+    //if(!in_array('administrator', $user_roles) && !in_array('order_override', $user_roles)) {
+    $form_state->setErrorByName('shipping_information[shipping_profile][address][0][address][postal_code', t('Sorry, your ship to address is outside of the shippable area for the free publications.'));
+    //}
+  }
+  else {
+    // If there are no issues, tell the system that every thing is ok.
+    $form_state->setTemporaryValue('entity_validated', TRUE);
+  }
+}
+
+/**
+ * Submission callback: Changes confirmation message on Splash Grant form.
+ */
+function _swfwmd_webform_submission_splash_school_grants_submit(array $form, FormStateInterface $form_state) {
+  // Suppress original message.
+  $messages = drupal_get_messages('status');
+
+  // Add completion message.
+  $token_service = \Drupal::token();
+  $raw_message = \Drupal::state()->get('splash_grant_completion_message', t('New submission added to Splash! School Grants.'));
+  $message = $token_service->replace($raw_message);
+  if (isset($messages['status']) && !empty($messages['status'])) {
+    foreach ($messages['status'] as $old_message) {
+      if ($old_message instanceof Markup &&
+        strpos($old_message->__toString(), 'New submission added to') !== FALSE) {
+        drupal_set_message(t('@message', ['@message' => $message]));
+      }
+      else {
+        drupal_set_message($old_message);
+      }
+    }
+  }
+}
+
+/**
+ * Validation callback: Checks if there are more than one hero instance.
+ */
+function _swfwmd_node_event_form_validate(array &$form, FormStateInterface $form_state) {
+  $values = $form_state->getValues();
+
+  $duplicate = FALSE;
+  if (isset($values['field_start_date']) &&
+    !empty($values['field_start_date'])) {
+    $dates = [];
+    foreach ($values['field_start_date'] as $date) {
+      if (is_array($date) &&
+        isset($date['value']) &&
+        $date['value'] instanceof DrupalDateTime) {
+        $readable_date = $date['value']->format('Y/m/d h:i:s A');
+        if (isset($dates[$readable_date])) {
+          $duplicate = TRUE;
+          break;
+        }
+        else {
+          $dates[$readable_date] = $readable_date;
+        }
+      }
+    }
+  }
+
+  if ($duplicate) {
+    $form_state->setErrorByName('field_start_date', t('Please avoid duplicate date entries.'));
+  }
+  else {
+    $form_state->setTemporaryValue('entity_validated', TRUE);
+  }
+}
+
+/**
+ * Validation callback: Checks if there are more than one hero instance.
+ */
+function _swfwmd_node_hero_form_validate(array &$form, FormStateInterface $form_state) {
+  $hero_count = 0;
+  $values = $form_state->getValues();
+
+  // Check on Hero image field.
+  if (isset($values['field_image']['target_id']) &&
+    !empty($values['field_image']['target_id'])) {
+    $hero_count++;
+  }
+
+  // Check on Hero image field (recreation site only).
+  if (isset($values['field_recreation_site_images']['target_id']) &&
+    !empty($values['field_recreation_site_images']['target_id'])) {
+    $hero_count++;
+  }
+
+  // Check on Hero slideshow field.
+  if (isset($values['field_slideshow']['entities'])) {
+    $hero_count++;
+  }
+
+  // Check on Hero video field.
+  if (isset($values['field_video_hero']['entities'])) {
+    $hero_count++;
+  }
+
+  if ($hero_count > 1) {
+    $form_state->setErrorByName('group_hero]', t('Only one hero choice can be used at a time: Hero Image OR Slideshow OR Video.'));
+  }
+  else {
+    $form_state->setTemporaryValue('entity_validated', TRUE);
+  }
+}
+
+/**
+ * Validation callback: Checks if Email and Confirm Email values match.
+ */
+function _swfwmd_webform_submission_well_complaint_form_validate(array &$form, FormStateInterface $form_state) {
+  $email = trim($form_state->getValue('email'));
+  $email_confirm = trim($form_state->getValue('email_confirm'));
+  if (!empty($email) && $email != $email_confirm) {
+    $form_state->setErrorByName('email_confirm', t('The <em>Email</em> you entered failed to confirm.'));
+  }
+}
+
+/**
+ * Helper function: Sends email to webform recipients.
+ *
+ * @param array $message
+ *   The standard webform mail parameteres.
+ */
+function _swfwmd_mail_send(array $message) {
+  $key = $message['mail_key'];
+  $to = $message['to_mail'];
+  $language = \Drupal::languageManager()->getCurrentLanguage()->getId();
+  $from = $message['from_mail'];
+
+  // Add more message information.
+  $message['from_name'] = preg_replace('/[<>]/', '', $message['from_name']);
+  $message += [
+    'states' => ['completed'],
+    'exclude_empty' => 1,
+    'html' => 1,
+  ];
+
+  // Support token in the customized message and notification settings.
+  $token_service = \Drupal::token();
+  $token_parameters = ['webform_submission' => $message['webform_submission']];
+  $message['to'] = $token_service->replace($message['to'], $token_parameters);
+  $message['from'] = $token_service->replace($message['from'], $token_parameters);
+  $message['subject'] = $token_service->replace($message['subject'], $token_parameters);
+  $message['body'] = $token_service->replace($message['body'], $token_parameters);
+
+  $mail_manager = \Drupal::service('plugin.manager.mail');
+  $mail_manager->mail('webform', $key, $to, $language, $message, $from);
+}
+
+/**
+ * Implements hook_inline_entity_form_table_fields_alter().
+ */
+function swfwmd_inline_entity_form_table_fields_alter(array &$fields, array $context) {
+  if ($context['parent_entity_type'] == 'node' &&
+    $context['parent_bundle'] == 'recreation_site' &&
+    $context['field_name'] == 'field_re' &&
+    $context['entity_type'] == 'node' &&
+    in_array('campsite', $context['allowed_bundles'])) {
+
+    // Add Max Daily Permits to inline entity form display for resertvation type.
+    $fields['field_max_daily_permits'] = [
+      'type' => 'field',
+      'label' => t('Max Daily Permits'),
+      'weight' => 2,
+    ];
+
+    // Add Max Daily Permits to inline entity form display for resertvation type.
+    $fields['field_max_daily_people'] = [
+      'type' => 'field',
+      'label' => t('Max Daily People'),
+      'weight' => 3,
+    ];
+  }
+}
+
+/**
+ * Implements hook_mail_alter().
+ *
+ * Adds custom site tokens for global use.
+ */
+function swfwmd_mail_alter(&$message) {
+  switch ($message['id']) {
+    case 'webform_splash_school_grants_admin_notification':
+    case 'webform_splash_school_grants_user_notification':
+    case 'webform_splash_school_grants_admin_notification_awarded':
+    case 'webform_splash_school_grants_user_notification_awarded':
+    case 'webform_splash_school_grants_admin_notification_declined':
+    case 'webform_splash_school_grants_user_notification_declined':
+      $webform_submission = $message['params']['webform_submission'];
+      $original_data = $webform_submission->getOriginalData();
+      $token_service = \Drupal::token();
+
+      // Support token in the customized message and notification settings.
+      $token_parameters = ['webform_submission' => $webform_submission];
+      $message['to'] = $token_service->replace($message['to'], $token_parameters);
+      $message['from'] = $token_service->replace($message['from'], $token_parameters);
+      $message['subject'] = $token_service->replace($message['subject'], $token_parameters);
+      if (!empty($message['body'])) {
+        foreach ($message['body'] as $key => $value) {
+          $message['body'][$key] = $token_service->replace($value, $token_parameters);
+        }
+      }
+
+      // Prevent mail from sending if status has not changed.
+      $prevent_email = [
+        'webform_splash_school_grants_admin_notification_awarded',
+        'webform_splash_school_grants_user_notification_awarded',
+        'webform_splash_school_grants_admin_notification_declined',
+        'webform_splash_school_grants_user_notification_declined',
+      ];
+      if (in_array($message['id'], $prevent_email) &&
+        $webform_submission->getElementData('status') == $original_data['status']) {
+        $message['send'] = FALSE;
+      }
+      break;
+  }
+
+  // Alter mail for Swift Mailer support so as to render mails in HTML format.
+  $line_endings = Settings::get('mail_line_endings', PHP_EOL);
+  $message['body'] = array_map(function ($body) {
+    if (strlen(strip_tags($body)) === strlen($body)) {
+      $body = str_replace("\n", '<br />', $body);
+    }
+    return $body instanceof MarkupInterface ? $body : Markup::create($body);
+  }, $message['body']);
+  $message['headers']['Content-Type'] = SWIFTMAILER_FORMAT_HTML;
+}
+
+/**
+ * Implements hook_menu_local_tasks_alter().
+ *
+ * Hide some undesired local task tabs.
+ */
+function swfwmd_menu_local_tasks_alter(&$data, $route_name, RefinableCacheableDependencyInterface &$cacheability) {
+  $route_names = [
+    'shortcut.set_switch' => [],
+    'views_view:view.moderation.page_1' => [
+      'moderation',
+      'page_1',
+    ],
+    'webform_view:webform_views:view.splash_grant_submissions.page_applications' => [
+      'splash_grant_submissions',
+      'page_applications',
+    ],
+    'views_view:view.commerce_user_orders.order_page' => [
+      'commerce_user_orders',
+      'order_page',
+    ],
+    'views_view:view.reservations.page_reservations' => [
+      'reservations',
+      'page_reservations',
+    ],
+  ];
+
+  $user = \Drupal::request()->attributes->get('user');
+  $user_entity = $user instanceof User ? $user : User::load((int) $user);
+  $current_user = \Drupal::currentUser();
+
+  foreach ($route_names as $route_name_id => $views) {
+    // Do not show some user tabs if the current is viewing another user's page.
+    if ($user_entity->id() != $current_user->id()) {
+      unset($data['tabs'][0][$route_name_id]);
+    }
+    // If current user is viewing own page, hide some tabs that have empty views
+    // result.
+    else {
+      if (!empty($views)) {
+        list($views_name, $views_display) = $views;
+        $access = _swfwmd_menu_local_tasks_access($views_name, $views_display);
+        if (!$access) {
+          unset($data['tabs'][0][$route_name_id]);
+        }
+      }
+    }
+  }
+
+  // Update shorcut tab weight to 2 so that it appears later in the list.
+  if (isset($data['tabs'][0]['shortcut.set_switch'])) {
+    $data['tabs'][0]['shortcut.set_switch']['#weight'] = 3;
+  }
+
+  // Alter some profile page user tabs.
+  if (isset($data['tabs'][0]['entity.user.canonical'])) {
+    $data['tabs'][0]['entity.user.canonical']['#link']['title'] = 'My Account';
+  }
+
+  if (isset($data['tabs'][0]['entity.user.edit_form'])) {
+    $data['tabs'][0]['entity.user.edit_form']['#link']['title'] = 'Edit My Account';
+  }
+}
+
+/**
+ * Helper fucntion to get user tab access based on views content.
+ *
+ * @param string $views_name
+ *   The machine name of the views.
+ * @param string $views_display
+ *   The machine name of the views display.
+ *
+ * @return boolean $access
+ *   Whether the current user has access to the views generated user tabs.
+ */
+function _swfwmd_menu_local_tasks_access($views_name, $views_display) {
+  $access = TRUE;
+  $user = \Drupal::currentUser();
+
+  $view = Views::getView($views_name);
+  $view->get_total_rows = TRUE;
+  $view->setArguments([$user->id()]);
+  $view->execute($views_display);
+  $rows = $view->total_rows;
+  if (!$rows) {
+    $access = FALSE;
+  }
+
+  return $access;
+}
+
+
+/**
+ * Implements hook_page_attachments_alter().
+ *
+ * Add dynamic style for frontpage tile image backgrounds.
+ */
+function swfwmd_page_attachments_alter(array &$page) {
+  // Add handling for the frontpage tile image background.
+  $is_front = \Drupal::service('path.matcher')->isFrontPage();
+  if ($is_front) {
+    $tiles = [1, 2, 3, 4];
+    $tile_styles = [];
+
+    // Iterate through is each setting and add dynamic styling if image is set.
+    foreach ($tiles as $tile) {
+      $tile_image = \Drupal::state()->get('tile_' . $tile . '_image');
+      if (!empty($tile_image) && isset($tile_image[0])) {
+        // Load the file entity of the image.
+        $tile_image_file = File::load($tile_image[0]);
+        if ($tile_image_file) {
+          // Get the path of the image.
+          $time_image_path = file_create_url($tile_image_file->getFileUri());
+          $tile_styles[] = '.path-frontpage #block-contentfield-6 .field--name-field-menu-tiles-frontpage .tile:nth-of-type(' . $tile . ') .wrapper { background-image: url(\'' . $time_image_path . '\'); }';
+        }
+      }
+    }
+
+    // Add new dynamic style to head.
+    if (!empty($tile_styles)) {
+      $page['#attached']['html_head'][] = [
+        [
+          '#tag' => 'style',
+          '#value' => implode("\n", $tile_styles),
+        ],
+        'swfwmd'
+      ];
+    }
+  }
+}
+
+/**
+ * If the messages are set add identifying classes to the body tag.
+ *
+ * @param array $vars
+ *   Provides
+ */
+function swfwmd_preprocess_html(&$vars) {
+  // Main braodcast message: add broadcast-message class to <body> tag
+  if (\Drupal::config('bootstrap_site_alert.settings')->get('bootstrap_site_alert_active')) {
+    $vars['classes_array'][] = 'broadcast-message';
+  }
+}
+
+/**
+ * Implements hook_token_info().
+ *
+ * Adds custom site tokens for global use.
+ */
+function swfwmd_token_info() {
+  $type = array(
+    'name' => t('SWFWMD'),
+    'description' => t('Custom token type defined for sitewide used.'),
+  );
+
+  // Global token definitions.
+  // Splash Grants tokens.
+  $tokens['splash-grant:admin-email'] = array(
+    'name' => t('Splash Grant: Administrator notification email'),
+    'description' => t('The email address that will receive all Splash Grant administrator notifications.'),
+  );
+
+  $tokens['splash-grant:completion-message'] = array(
+    'name' => t('Splash Grant: Completion message'),
+    'description' => t('The message that will appear on screen upon completing the Splash Grant form.'),
+  );
+
+  $tokens['splash-grant:completion-email-subject'] = array(
+    'name' => t('Splash Grant: Completion notification email subject'),
+    'description' => t('The subject of the message that will be sent to both the Splash Grant form submitter and administrator upon completion.'),
+  );
+
+  $tokens['splash-grant:completion-email-user'] = array(
+    'name' => t('Splash Grant: Completion user notification'),
+    'description' => t('The body of the message that will be sent to Splash Grant form submitter upon completion.'),
+  );
+
+  $tokens['splash-grant:completion-email-admin'] = array(
+    'name' => t('Splash Grant: Completion administrator notification'),
+    'description' => t('The body of the message that will be sent to Splash Grant administrator upon completion.'),
+  );
+
+  $tokens['splash-grant:award-email-subject'] = array(
+    'name' => t('Splash Grant: Award notification email subject'),
+    'description' => t('The subject of the message that will be sent to both the Splash Grant form submitter and administrator upon awarding.'),
+  );
+
+  $tokens['splash-grant:award-email-user'] = array(
+    'name' => t('Splash Grant: Award user notification'),
+    'description' => t('The body of the message that will be sent to Splash Grant form submitter upon awarding.'),
+  );
+
+  $tokens['splash-grant:award-email-admin'] = array(
+    'name' => t('Splash Grant: Award administrator notification'),
+    'description' => t('The body of the message that will be sent to Splash Grant administrator upon awarding.'),
+  );
+
+  $tokens['splash-grant:decline-email-subject'] = array(
+    'name' => t('Splash Grant: Decline notification email subject'),
+    'description' => t('The subject of the message that will be sent to both the Splash Grant form submitter and administrator upon declining.'),
+  );
+
+  $tokens['splash-grant:decline-email-user'] = array(
+    'name' => t('Splash Grant: Decline user notification'),
+    'description' => t('The body of the message that will be sent to Splash Grant form submitter upon declining.'),
+  );
+
+  $tokens['splash-grant:decline-email-admin'] = array(
+    'name' => t('Splash Grant: Decline administrator notification'),
+    'description' => t('The body of the message that will be sent to Splash Grant administrator upon declining.'),
+  );
+
+  return array(
+    'types' => array(
+      'swfwmd' => $type,
+    ),
+    'tokens' => array(
+      'swfwmd' => $tokens,
+    ),
+  );
+}
+
+/**
+ * Implements hook_tokens().
+ *
+ * Add replacement values to global SWFWMD tokens.
+ */
+function swfwmd_tokens($type, $tokens, array $data, array $options, BubbleableMetadata $bubbleable_metadata) {
+  $replacements = [];
+
+  $default_message = t('<p>Submitted on [webform_submission:created]</p>
+      <p>Submitted by: [webform_submission:user]</p>
+      <p>Submitted values are:</p>
+      [webform_submission:values]');
+
+  if ($type == 'swfwmd') {
+    foreach ($tokens as $name => $original) {
+      switch ($name) {
+        case 'splash-grant:admin-email':
+          $replacements[$original] = \Drupal::state()->get('splash_grant_admin_email', 'WaterEducation@WaterMatters.org');
+          break;
+
+        case 'splash-grant:completion-message':
+          $replacements[$original] = \Drupal::state()->get('splash_grant_completion_message', t('New submission added to Splash! School Grants.'));
+          break;
+
+        case 'splash-grant:completion-email-subject':
+          $replacements[$original] = \Drupal::state()->get('splash_grant_completion_email_subject', t('Splash Grant Application Completed'));
+          break;
+
+        case 'splash-grant:completion-email-user':
+          $replacements[$original] = \Drupal::state()->get('splash_grant_completion_email_user', $default_message);
+          break;
+
+        case 'splash-grant:completion-email-admin':
+          $replacements[$original] = \Drupal::state()->get('splash_grant_completion_email_admin', $default_message);
+          break;
+
+        case 'splash-grant:award-email-subject':
+          $replacements[$original] = \Drupal::state()->get('splash_grant_award_email_subject', t('Splash Grant Application Awarded'));
+          break;
+
+        case 'splash-grant:award-email-user':
+          $replacements[$original] = \Drupal::state()->get('splash_grant_award_email_user', $default_message);
+          break;
+
+        case 'splash-grant:award-email-admin':
+          $replacements[$original] = \Drupal::state()->get('splash_grant_award_email_admin', $default_message);
+          break;
+
+        case 'splash-grant:decline-email-subject':
+          $replacements[$original] = \Drupal::state()->get('splash_grant_decline_email_subject', t('Splash Grant Application Declined'));
+          break;
+
+        case 'splash-grant:decline-email-user':
+          $replacements[$original] = \Drupal::state()->get('splash_grant_decline_email_user', $default_message);
+          break;
+
+        case 'splash-grant:decline-email-admin':
+          $replacements[$original] = \Drupal::state()->get('splash_grant_decline_email_admin', $default_message);
+          break;
+
+      }
+    }
+  }
+
+  return $replacements;
+}
+
+/**
+ * Implements hook_views_query_alter().
+ */
+function swfwmd_views_query_alter(ViewExecutable $view, QueryPluginBase $query) {
+  if ($view->id() == 'images_gallery' && $view->getDisplay()->display['id'] == 'page_1') {
+    // Make sure the grouping type for exposed filter of the image gallery views
+    // is set to OR. Please note the delta or key 0 is reserved for the exposed
+    // filters of the view.
+    if ($query->where[0]['type']) {
+      $query->where[0]['type'] = 'OR';
+
+      // Change media category table JOIN to LEFT.
+      $category = $query->getTableInfo('media__field_image_category');
+      if (isset($category['join']->type) && $category['join']->type === 'INNER') {
+        $category['join']->type = 'LEFT';
+      }
+
+      // Change media tags table JOIN to LEFT.
+      $tags = $query->getTableInfo('media__field_image_tags');
+      if (isset($tags['join']->type) && $tags['join']->type === 'INNER') {
+        $tags['join']->type = 'LEFT';
+      }
+    }
+  }
+}
+
+/**
+ * Get a list of closed recreation site.
+ *
+ * @param int $site
+ *   (optional) The node ID of the recreation site.
+ *
+ * @return mixed
+ *   The result of the entity query, if any.
+ */
+function _swfwmd_get_closed_recreation_sites($site = NULL) {
+
+  if(isset($site)) {
+    $query = \Drupal::entityQuery('node')
+      ->condition('field_closed', TRUE)
+      ->condition('nid', $site);
+
+    return $query->execute();
+
+  }
+  else {
+    // Get the list of closed sites if we have any.
+    $query = \Drupal::entityQuery('node')
+      ->condition('field_closed', TRUE);
+
+    return $query->execute();
+  }
+
+}
+
+
+/**
+ * Determine if the current page has a targeted message.
+ *
+ * @return bool
+ */
+function _swfwmd_show_targeted_message() {
+
+  if (($node = \Drupal::routeMatch()->getParameter('node')) && ($node->hasField('field_site_'))) { // we're on a node! (not a view or something...)
+    $site_section = Term::load($node->get('field_site_')->getValue()[0]['target_id']);
+    $path_parts = array_filter(explode('/', $site_section->get('field_path_alias_pattern')->value));
+  } else {
+    // Get current path.
+    $current_path = \Drupal::service('path.current')->getPath();
+    $path_parts = array_filter(explode('/', \Drupal::service('path.alias_manager')->getAliasByPath($current_path)));
+  }
+  // get any site_message content that is tagged with the current location.
+  $ids = \Drupal::entityQuery('node')
+    ->condition('status', 1)
+    ->condition('type', 'site_message')
+    ->sort('changed', 'DESC')
+    ->execute();
+  $messages = Node::loadMultiple($ids);
+  foreach($messages as $message) {
+    $show = FALSE;
+    // go through the path and if all the items in the site_section match the ones in the alias IN ORDER. Show the block
+    $display_section_ids = $message->get('field_site_section')->getValue();;
+    foreach ($display_section_ids as $display_section_id) {
+      $section = $display_section_id['target_id'];
+      $display_section = Term::load($section)->get('field_path_alias_pattern')->value;
+      $link = $message->get('field_more_information_link')->getValue();
+      $display_section_parts = explode('/', $display_section);
+      $display_section_parts = array_filter($display_section_parts);
+      if (isset($path_parts)) {
+        // get the current message loaded
+        $content['body']['#markup'] = $message->getTitle();
+        $content['link_title'] = $link[0]['title'];
+        $content['link'] = $link[0]['uri'];
+        $content['id'] = $message->id();
+        $content['key'] = \Drupal::config('targeted_site_alert.settings')->get('targeted_site_alert_key_' . $message->id());
+        foreach ($path_parts as $key => $path_part) {
+          if (
+            ($path_parts[$key] != $display_section_parts[$key]) &&
+            (isset($_COOKIE['Drupal_visitor_targeted_site_alert_dismissed_'  . $message->id()]) && $_COOKIE['Drupal_visitor_targeted_site_alert_dismissed_' . $message->id()] == $content['key'])) {
+            continue;
+          } else {
+            return $content;
+          }
+        }
+      } else {
+        // if nothing is set default to show nothing.
+        return FALSE;
+      }
+    }
+
+  }
+}
+
+/**
+ * Import staff callback.
+ */
+function _swfwmd_import_staff(&$context) {
+  $import = new SwfwmdCommands;
+  $import->importStaff('ui');
+}
+
+/**
+ * Import staff finish callback.
+ */
+function _swfwmd_import_staff_finished($success, $results, $operations) {
+  if ($success) {
+    $message = t('Staff import has completed.');
+  }
+  else {
+    $message = t('Staff import has completed with an error.');
+  }
+  drupal_set_message($message);
+}
+
+/**
+ * Import update callback.
+ */
+function _swfwmd_remove_staff(&$context) {
+  $import = new SwfwmdCommands;
+  $import->removeMissingStaff('ui');
+}
+
+/**
+ * Import update finish callback.
+ */
+function _swfwmd_remove_staff_finished($success, $results, $operations) {
+  if ($success) {
+    $message = t('Staff update has completed.');
+  }
+  else {
+    $message = t('Staff update has completed with an error.');
+  }
+  drupal_set_message($message);
+}

@@ -1,0 +1,27 @@
+{
+	"name": "szipfel/slick",
+	"description": "Slick carousel library for composer.",
+	"type": "drupal-library",
+	"homepage": "https://www.drupal.org/sandbox/z1pp3r/2857119",
+	"authors": [{
+		"name": "Ken Wheeler",
+		"homepage": "https://github.com/kenwheeler/slick"
+	}],
+	"support": {
+		"issues": "https://github.com/kenwheeler/slick/issues"
+	},
+	"license": "GPL-2.0+",
+	"repositories": [{
+		"type": "package",
+		"package": {
+			"name": "szipfel/slick",
+			"version": "1.8.1",
+			"type": "drupal-library",
+			"source": {
+				"url": "https://github.com/kenwheeler/slick.git",
+				"type": "git",
+				"reference": "refs/heads/master"
+			}
+		}
+	}]
+}

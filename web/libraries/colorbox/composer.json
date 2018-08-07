@@ -1,0 +1,25 @@
+{
+	"name": "Comarco/colorbox",
+	"description": "Colorbox library for composer.",
+	"type": "drupal-library",
+	"homepage": "http://jacklmoore.com/colorbox/",
+	"authors": [{
+		"name": "Jack Moore",
+		"url": "http://www.jacklmoore.com",
+		"email": "hello@jacklmoore.com"
+	}],
+	"license": "MIT",
+	"repositories": [{
+		"type": "package",
+		"package": {
+			"name": "Comarco/colorbox",
+			"version": "1.6.4",
+			"type": "drupal-library",
+			"source": {
+				"url": "https://github.com/jackmoore/colorbox",
+				"type": "git",
+				"reference": "refs/heads/master"
+			}
+		}
+	}]
+}

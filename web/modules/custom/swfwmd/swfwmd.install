@@ -1,0 +1,564 @@
+<?php
+
+/**
+ * @file
+ * Main module file for creating the SWFWMD frontpage.
+ */
+
+use Drupal\file\Entity\File;
+use Drupal\node\Entity\Node;
+use Drupal\media_entity\Entity\Media;
+use Drupal\paragraphs\Entity\Paragraph;
+use Drupal\taxonomy\Entity\Vocabulary;
+use Drupal\field\Entity\FieldStorageConfig;
+use Drupal\field\Entity\FieldConfig;
+use Drupal\Component\Utility\Random;
+
+/**
+  * Implements hook_install().
+  */
+function swfwmd_install() {
+  // Define initial schema version.
+  drupal_set_installed_schema_version('swfwmd', 8000);
+}
+
+/**
+ * Creating the online store.
+ */
+function swfwmd_update_8001() {
+  // The store type. Default is 'online'.
+  $type = 'online';
+
+  // The user id the store belongs to.
+  $uid = 1;
+
+  // The store's name.
+  $name = 'SWFWMD Store';
+
+  // Store's email address.
+  $mail = 'swfwmd@example.com';
+
+  // The country code.
+  $country = 'US';
+
+  // The store's address.
+  $address = [
+    'country_code' => $country,
+    'address_line1' => '2379 Broad Street',
+    'locality' => 'Brooksville',
+    'administrative_area' => 'FL',
+    'postal_code' => '34604-6899',
+  ];
+
+  // The currency code.
+  $currency = 'USD';
+
+  // If needed, this will import the currency.
+  $currency_importer = \Drupal::service('commerce_price.currency_importer');
+  $currency_importer->import($currency);
+
+  $store = \Drupal\commerce_store\Entity\Store::create([
+    'type' => $type,
+    'uid' => $uid,
+    'name' => $name,
+    'mail' => $mail,
+    'address' => $address,
+    'default_currency' => $currency,
+    'billing_countries' => [
+      $country,
+    ],
+  ]);
+
+  // If needed, this sets the store as the default store.
+  $store_storage = \Drupal::service('entity_type.manager')->getStorage('commerce_store');
+  $store_storage->markAsDefault($store);
+
+  // Finally, save the store.
+  $store->save();
+}
+
+/**
+ * Delete removed module from system: related_menu.
+ */
+function swfwmd_update_8002() {
+  $query = \Drupal::database()->delete('key_value')
+    ->condition('collection', 'system.schema')
+    ->condition('name', 'related_menu')
+    ->execute();
+}
+
+/**
+ * Set the status of submissions that were previously submitted.
+ */
+function swfwmd_update_8003() {
+  // Look for an existing webform submissions.
+  $submission_search = \Drupal::entityTypeManager()
+    ->getStorage('webform_submission')
+    ->loadByProperties([]);
+
+  foreach ($submission_search as $key => $entity) {
+    if ($entity->bundle() == 'splash_school_grants') {
+      // Save the entity to trigger presve hook.
+      $entity->save();
+    }
+  }
+}
+
+/**
+ * Uninstall and reinstall swfwmd_reservation module.
+ */
+function swfwmd_update_8004() {
+  \Drupal::service('module_installer')->uninstall(['swfwmd_reservation']);
+  \Drupal::service('module_installer')->install(['swfwmd_reservation']);
+}
+
+/**
+ * Remove field_recreation_site on campsite node type.
+ */
+function swfwmd_update_8005() {
+  $entity_field_manager = Drupal::service('entity_field.manager');
+
+  $fields = $entity_field_manager->getFieldDefinitions('node', 'campsite');
+
+  if (isset($fields['field_recreation_site'])) {
+    $fields['field_recreation_site']->delete();
+  }
+}
+
+/**
+ * Remove field_tag on reservation node type.
+ */
+function swfwmd_update_8006() {
+  $entity_field_manager = Drupal::service('entity_field.manager');
+
+  $fields = $entity_field_manager->getFieldDefinitions('node', 'reservation');
+
+  if (isset($fields['field_tag'])) {
+    $fields['field_tag']->delete();
+  }
+}
+
+
+/**
+ * Add default tile image to fourth front page tile.
+ */
+function swfwmd_update_8007() {
+  // Create a new file entry for the bird tile image.
+  $file = File::create([
+    'uid' => 1,
+    'filename' => 'bird.png',
+    'uri' => 'public://tiles/bird.png',
+    'status' => 1,
+  ]);
+  $file->setPermanent();
+  $file->save();
+
+  // Set the new bird tile image to the fourth tile setting.
+  \Drupal::state()->set('tile_4_image', [$file->id()]);
+}
+
+/**
+ * Delete Water Resources vocabulary and referencing field.
+ */
+function swfwmd_update_8008() {
+  // Delete the referencing field storage.
+  $field_type = FieldStorageConfig::loadByName('media', 'field_type');
+  if (isset($field_type)) {
+    FieldStorageConfig::loadByName('media', 'field_type')->delete();
+  }
+  // Delete terms.
+  $vid = Vocabulary::load('water_resources');
+
+  if (isset($vid)) {
+    $tids = Drupal::entityQuery('taxonomy_term')
+      ->condition('vid', $vid)
+      ->execute();
+    entity_delete_multiple('taxonomy_term', $tids);
+
+    // Delete the vocab.
+    Vocabulary::load($vid)->delete();
+  }
+}
+
+/**
+ * Set the default value for the staff API endpoint.
+ */
+function swfwmd_update_8009() {
+  \Drupal::state()->set('staff_import_url', 'http://swfwmd.prometdev.com/users.json');
+}
+
+/**
+ * Set the default value for the messages keys.
+ */
+function swfwmd_update_8010() {
+  $r_mess = \Drupal::config('recreation_site_alert.settings')->get('recreation_site_alert_key');
+  //set the dismissal key for the rec site message.
+  if(!isset($r_mess)) {
+    $config_recsite = \Drupal::service('config.factory')
+      ->getEditable('recreation_site_alert.settings');
+    $random = new Random();
+    $config_recsite->set('recreation_site_alert_key', $random->string(16, TRUE));
+    $config_recsite->save();
+  }
+
+  $b_mess = \Drupal::config('broadcast_site_alert.settings')->get('broadcast_site_alert_key');
+  // Set the default key for the regular site messages.
+  if( !isset($b_mess)) {
+    $config_broadcast = \Drupal::service('config.factory')
+      ->getEditable('broadcast_site_alert.settings');
+    $random = new Random();
+    $config_broadcast->set('broadcast_site_alert_key', $random->string(16, TRUE));
+    $config_broadcast->save();
+  }
+}
+
+/**
+ * Delete all paragraphs of event_attachment type.
+ */
+function swfwmd_update_8011() {
+  // Get all paragraphs of event_attachment type.
+  $paragraphs = \Drupal::entityQuery('paragraph')
+    ->condition('type', 'event_attachment')
+    ->execute();
+
+  // Delete the results of the query.
+  entity_delete_multiple('paragraph', $paragraphs);
+}
+
+/**
+ * Update user staff import URL.
+ */
+function swfwmd_update_8012() {
+  \Drupal::state()->set('staff_import_url', 'https://wwwvmproxyda02.swfwmd.state.fl.us/wsSSearchd/api/StaffSearch/GetEmployees');
+  \Drupal::state()->set('staff_import_basicauth', 1);
+  \Drupal::state()->set('staff_import_username', 'username');
+  \Drupal::state()->set('staff_import_password', 'password');
+}
+
+/**
+ * Update recreation site opportunities description.
+ */
+function swfwmd_update_8013() {
+  $query = \Drupal::database()
+    ->select('paragraph__field_recreation_description')
+    ->fields('paragraph__field_recreation_description');
+  $result = $query->execute();
+  while ($row = $result->fetchObject()) {
+    \Drupal::database()->update('paragraph__field_recreation_description')
+      ->fields([
+        'field_recreation_description_value' => str_replace(["\r\n", '. *'], ['<br />', '.<br /> *'], $row->field_recreation_description_value),
+      ])
+      ->condition('bundle', $row->bundle)
+      ->condition('deleted', $row->deleted)
+      ->condition('entity_id', $row->entity_id)
+      ->condition('revision_id', $row->revision_id)
+      ->condition('langcode', $row->langcode)
+      ->condition('delta', $row->delta)
+      ->execute();
+  }
+}
+
+/**
+ * Update recreation site opportunities description revision.
+ */
+function swfwmd_update_8014() {
+  $query = \Drupal::database()
+    ->select('paragraph_revision__field_recreation_description')
+    ->fields('paragraph_revision__field_recreation_description');
+  $result = $query->execute();
+  while ($row = $result->fetchObject()) {
+    \Drupal::database()->update('paragraph_revision__field_recreation_description')
+      ->fields([
+        'field_recreation_description_value' => str_replace(["\r\n", '. *'], ['<br />', '.<br /> *'], $row->field_recreation_description_value),
+      ])
+      ->condition('bundle', $row->bundle)
+      ->condition('deleted', $row->deleted)
+      ->condition('entity_id', $row->entity_id)
+      ->condition('revision_id', $row->revision_id)
+      ->condition('langcode', $row->langcode)
+      ->condition('delta', $row->delta)
+      ->execute();
+  }
+}
+
+/**
+ * Update access and parking description.
+ */
+function swfwmd_update_8015() {
+  $query = \Drupal::database()
+    ->select('node__field_recreation_site_accss_park')
+    ->fields('node__field_recreation_site_accss_park');
+  $result = $query->execute();
+  while ($row = $result->fetchObject()) {
+    \Drupal::database()->update('node__field_recreation_site_accss_park')
+      ->fields([
+        'field_recreation_site_accss_park_value' => str_replace(["\r\n", '. *'], ['<br />', '.<br /> *'], $row->field_recreation_site_accss_park_value),
+      ])
+      ->condition('bundle', $row->bundle)
+      ->condition('deleted', $row->deleted)
+      ->condition('entity_id', $row->entity_id)
+      ->condition('revision_id', $row->revision_id)
+      ->condition('langcode', $row->langcode)
+      ->condition('delta', $row->delta)
+      ->execute();
+  }
+}
+
+/**
+ * Update access and parking description revision.
+ */
+function swfwmd_update_8016() {
+  $query = \Drupal::database()
+    ->select('node_revision__field_recreation_site_accss_park')
+    ->fields('node_revision__field_recreation_site_accss_park');
+  $result = $query->execute();
+  while ($row = $result->fetchObject()) {
+    \Drupal::database()->update('node_revision__field_recreation_site_accss_park')
+      ->fields([
+        'field_recreation_site_accss_park_value' => str_replace(["\r\n", '. *'], ['<br />', '.<br /> *'], $row->field_recreation_site_accss_park_value),
+      ])
+      ->condition('bundle', $row->bundle)
+      ->condition('deleted', $row->deleted)
+      ->condition('entity_id', $row->entity_id)
+      ->condition('revision_id', $row->revision_id)
+      ->condition('langcode', $row->langcode)
+      ->condition('delta', $row->delta)
+      ->execute();
+  }
+}
+
+/**
+ * Update parking pass description.
+ */
+function swfwmd_update_8017() {
+  $query = \Drupal::database()
+    ->select('node__field_recreation_parking_pass')
+    ->fields('node__field_recreation_parking_pass');
+  $result = $query->execute();
+  while ($row = $result->fetchObject()) {
+    \Drupal::database()->update('node__field_recreation_parking_pass')
+      ->fields([
+        'field_recreation_parking_pass_value' => str_replace(["\r\n", '. *'], ['<br />', '.<br /> *'], $row->field_recreation_parking_pass_value),
+      ])
+      ->condition('bundle', $row->bundle)
+      ->condition('deleted', $row->deleted)
+      ->condition('entity_id', $row->entity_id)
+      ->condition('revision_id', $row->revision_id)
+      ->condition('langcode', $row->langcode)
+      ->condition('delta', $row->delta)
+      ->execute();
+  }
+}
+
+/**
+ * Update parking pass description revision.
+ */
+function swfwmd_update_8018() {
+  $query = \Drupal::database()
+    ->select('node_revision__field_recreation_parking_pass')
+    ->fields('node_revision__field_recreation_parking_pass');
+  $result = $query->execute();
+  while ($row = $result->fetchObject()) {
+    \Drupal::database()->update('node_revision__field_recreation_parking_pass')
+      ->fields([
+        'field_recreation_parking_pass_value' => str_replace(["\r\n", '. *'], ['<br />', '.<br /> *'], $row->field_recreation_parking_pass_value),
+      ])
+      ->condition('bundle', $row->bundle)
+      ->condition('deleted', $row->deleted)
+      ->condition('entity_id', $row->entity_id)
+      ->condition('revision_id', $row->revision_id)
+      ->condition('langcode', $row->langcode)
+      ->condition('delta', $row->delta)
+      ->execute();
+  }
+}
+
+/**
+ * Update restrooms and water description.
+ */
+function swfwmd_update_8019() {
+  $query = \Drupal::database()
+    ->select('node__field_restrooms_and_water')
+    ->fields('node__field_restrooms_and_water');
+  $result = $query->execute();
+  while ($row = $result->fetchObject()) {
+    \Drupal::database()->update('node__field_restrooms_and_water')
+      ->fields([
+        'field_restrooms_and_water_value' => str_replace(["\r\n", '. *'], ['<br />', '.<br /> *'], $row->field_restrooms_and_water_value),
+      ])
+      ->condition('bundle', $row->bundle)
+      ->condition('deleted', $row->deleted)
+      ->condition('entity_id', $row->entity_id)
+      ->condition('revision_id', $row->revision_id)
+      ->condition('langcode', $row->langcode)
+      ->condition('delta', $row->delta)
+      ->execute();
+  }
+}
+
+/**
+ * Update restrooms and water description revision.
+ */
+function swfwmd_update_8020() {
+  $query = \Drupal::database()
+    ->select('node_revision__field_restrooms_and_water')
+    ->fields('node_revision__field_restrooms_and_water');
+  $result = $query->execute();
+  while ($row = $result->fetchObject()) {
+    \Drupal::database()->update('node_revision__field_restrooms_and_water')
+      ->fields([
+        'field_restrooms_and_water_value' => str_replace(["\r\n", '. *'], ['<br />', '.<br /> *'], $row->field_restrooms_and_water_value),
+      ])
+      ->condition('bundle', $row->bundle)
+      ->condition('deleted', $row->deleted)
+      ->condition('entity_id', $row->entity_id)
+      ->condition('revision_id', $row->revision_id)
+      ->condition('langcode', $row->langcode)
+      ->condition('delta', $row->delta)
+      ->execute();
+  }
+}
+
+/**
+ * Update dogs description.
+ */
+function swfwmd_update_8021() {
+  $query = \Drupal::database()
+    ->select('node__field_dogs')
+    ->fields('node__field_dogs');
+  $result = $query->execute();
+  while ($row = $result->fetchObject()) {
+    \Drupal::database()->update('node__field_dogs')
+      ->fields([
+        'field_dogs_value' => str_replace(["\r\n", '. *'], ['<br />', '.<br /> *'], $row->field_dogs_value),
+      ])
+      ->condition('bundle', $row->bundle)
+      ->condition('deleted', $row->deleted)
+      ->condition('entity_id', $row->entity_id)
+      ->condition('revision_id', $row->revision_id)
+      ->condition('langcode', $row->langcode)
+      ->condition('delta', $row->delta)
+      ->execute();
+  }
+}
+
+/**
+ * Update dogs description revision.
+ */
+function swfwmd_update_8022() {
+  $query = \Drupal::database()
+    ->select('node_revision__field_dogs')
+    ->fields('node_revision__field_dogs');
+  $result = $query->execute();
+  while ($row = $result->fetchObject()) {
+    \Drupal::database()->update('node_revision__field_dogs')
+      ->fields([
+        'field_dogs_value' => str_replace(["\r\n", '. *'], ['<br />', '.<br /> *'], $row->field_dogs_value),
+      ])
+      ->condition('bundle', $row->bundle)
+      ->condition('deleted', $row->deleted)
+      ->condition('entity_id', $row->entity_id)
+      ->condition('revision_id', $row->revision_id)
+      ->condition('langcode', $row->langcode)
+      ->condition('delta', $row->delta)
+      ->execute();
+  }
+}
+
+/**
+ * Update for more information description.
+ */
+function swfwmd_update_8023() {
+  $query = \Drupal::database()
+    ->select('node__field_for_more_information')
+    ->fields('node__field_for_more_information');
+  $result = $query->execute();
+  while ($row = $result->fetchObject()) {
+    \Drupal::database()->update('node__field_for_more_information')
+      ->fields([
+        'field_for_more_information_value' => str_replace(["\r\n", '. *'], ['<br />', '.<br /> *'], $row->field_for_more_information_value),
+      ])
+      ->condition('bundle', $row->bundle)
+      ->condition('deleted', $row->deleted)
+      ->condition('entity_id', $row->entity_id)
+      ->condition('revision_id', $row->revision_id)
+      ->condition('langcode', $row->langcode)
+      ->condition('delta', $row->delta)
+      ->execute();
+  }
+}
+
+/**
+ * Update for more information description revision.
+ */
+function swfwmd_update_8024() {
+  $query = \Drupal::database()
+    ->select('node_revision__field_for_more_information')
+    ->fields('node_revision__field_for_more_information');
+  $result = $query->execute();
+  while ($row = $result->fetchObject()) {
+    \Drupal::database()->update('node_revision__field_for_more_information')
+      ->fields([
+        'field_for_more_information_value' => str_replace(["\r\n", '. *'], ['<br />', '.<br /> *'], $row->field_for_more_information_value),
+      ])
+      ->condition('bundle', $row->bundle)
+      ->condition('deleted', $row->deleted)
+      ->condition('entity_id', $row->entity_id)
+      ->condition('revision_id', $row->revision_id)
+      ->condition('langcode', $row->langcode)
+      ->condition('delta', $row->delta)
+      ->execute();
+  }
+}
+
+/**
+ * Set the weight of this module to 10 so hooks runs later than most modules.
+ */
+function swfwmd_update_8025() {
+  module_set_weight('swfwmd', 10);
+}
+
+/**
+ * Remove some fields on recreation sites node type so they can be re-imported.
+ */
+function swfwmd_update_8026() {
+  $entity_field_manager = Drupal::service('entity_field.manager');
+
+  $fields = $entity_field_manager->getFieldDefinitions('node', 'recreation_site');
+
+  $field_list = [
+    'field_recreation_thanks_subject',
+    'field_recreation_thanks_message',
+    'field_recreation_approve_subject',
+    'field_recreation_approve_message',
+    'field_recreation_deny_subject',
+    'field_recreation_deny_message',
+    'field_recreation_cancel_subject',
+    'field_recreation_cancel_message',
+  ];
+  foreach ($field_list as $field) {
+    if (isset($fields[$field])) {
+      $fields[$field]->delete();
+    }
+  }
+}
+
+/**
+ * Remove IP Address info on all Public Records Request submissions.
+ */
+function swfwmd_update_8027() {
+  \Drupal::database()->update('webform_submission')
+    ->fields([
+      'remote_addr' => '',
+    ])
+    ->condition('webform_id', 'public_records_request')
+    ->execute();
+}
+
+/**
+ * Set default values for max days in advance and maximum consecutive days for reservations.
+ */
+function swfwmd_update_8028() {
+ \Drupal::state()->set('max_consecutive_days', 7);
+  \Drupal::state()->set('max_advance_days', 90);
+}

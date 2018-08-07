@@ -1,0 +1,16 @@
+.form-item-budget-item input[type="number"]::-webkit-inner-spin-button,
+.form-item-budget-item input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.form-item-budget-item input[id*="budget-total"]{
+  background-color: #d6d8d9;
+  cursor: default;
+  opacity: 1;
+}
+
+.form-type-webform-custom-composite .container-inline .form-item-budget-item-add-more-items,
+#edit-budget-item--description {
+  display: none;
+}

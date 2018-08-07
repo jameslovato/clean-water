@@ -1,0 +1,29 @@
+swfwmd.admin_index:
+  title: 'SWFWMD settings'
+  description: 'Configure the customized SWFWMD settings.'
+  parent: system.admin_config
+  route_name: swfwmd.admin_index
+
+swfwmd.settings:
+  title: 'SWFWMD configuration'
+  description: 'Configure the customized SWFWMD settings.'
+  parent: swfwmd.admin_index
+  route_name: swfwmd.settings
+
+swfwmd.messages:
+  title: 'SWFWMD site messages'
+  description: 'Configure the SWFWMD site messages.'
+  parent: swfwmd.admin_index
+  route_name: swfwmd.messages
+
+swfwmd.staff:
+  title: 'SWFWMD staff import'
+  description: 'Configure the SWFWMD staff import settings.'
+  parent: swfwmd.admin_index
+  route_name: swfwmd.staff
+
+swfwmd.theme:
+  title: 'SWFWMD theme overrides'
+  description: 'Configure the SWFWMD theme overrides.'
+  parent: swfwmd.admin_index
+  route_name: swfwmd.theme

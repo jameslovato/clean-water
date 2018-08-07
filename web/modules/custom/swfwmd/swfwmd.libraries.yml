@@ -1,0 +1,57 @@
+commerce.shipping-method:
+  version: 1.x
+  js:
+    js/commerce-shipping-method.js: {}
+
+dismissed-cookie:
+  version: 1.x
+  js:
+    js/dismissed-cookie.js: {}
+  dependencies:
+    - core/jquery
+    - core/jquery.cookie
+    - core/drupalSettings
+
+node.event.form:
+  version: 1.x
+  css:
+    theme:
+      css/node-event-form.css: {}
+
+recreation.reservation.emails:
+  version: 1.x
+  js:
+    js/recreation-reservation-emails.js: {}
+
+webform.classroom.challenge:
+  version: 1.x
+  js:
+    js/webform-classroom-challenge.js: {}
+
+webform.preapp:
+  version: 1.x
+  js:
+    js/webform-preapp.js: {}
+
+webform.splash.grant:
+  version: 1.x
+  css:
+    theme:
+      css/webform-splash-grant.css: {}
+  js:
+    js/webform-splash-grant.js: {}
+
+webform.structure.operational.guidelines:
+  version: 1.x
+  js:
+    js/webform-structure-operational-guidelines.js: {}
+
+webform.water.conservation.pledge:
+  version: 1.x
+  js:
+    js/webform-water-conservation-pledge.js: {}
+
+webform.well.complaint:
+  version: 1.x
+  js:
+    js/webform-well-complaint.js: {}

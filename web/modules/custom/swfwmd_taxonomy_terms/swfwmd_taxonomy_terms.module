@@ -1,0 +1,152 @@
+<?php
+
+/**
+ * @file
+ * Contains swfwmd_taxonomy_terms.module.
+ */
+
+use Drupal\taxonomy\Entity\Term;
+
+/**
+ * Helper function: Creates terms for site.
+ *
+ * @param string $vocabulary
+ *   The machine name of the taxonomy vocabulary.
+ * @param array $terms
+ *   The terms to be created or updated.
+ * @param string $parent
+ *   The term entity of the parent item.
+ */
+function _swfwmd_taxonomy_terms_create_update($vocabulary, $terms, $parent = []) {
+  // Set the initial weight.
+  $weight = 0;
+
+  // Do not proceed if this is empty.
+  if (empty($terms)) {
+    return;
+  }
+
+  foreach ($terms as $term_name => $info) {
+    // Initially create the term entity.
+    if (!isset($info['old_name']) || empty($info['old_name'])) {
+      $term = _swfwmd_taxonomy_terms_create($term_name, $vocabulary, $weight, $parent, $info['fields'], FALSE);
+    }
+    else {
+      // Look for an existing term based on an old name.
+      $term_search = \Drupal::entityTypeManager()
+        ->getStorage('taxonomy_term')
+        ->loadByProperties(['name' => $info['old_name'], 'vid' => $vocabulary]);
+
+      if (empty($term_search)) {
+        // If the search yields no result, create the term anyway.
+        $term = _swfwmd_taxonomy_terms_create($term_name, $vocabulary, $weight, $parent, $info['fields'], FALSE);
+      }
+      else {
+        // If the search yields results, get the first item only.
+        $old_term = current($term_search);
+        $term = _swfwmd_taxonomy_terms_update($old_term, $term_name, $vocabulary, $weight, $parent, $info['fields'], FALSE);
+      }
+    }
+
+    // Process the menu children if any.
+    if (isset($info['children'])) {
+      _swfwmd_taxonomy_terms_create_update($vocabulary, $info['children'], [$term->id()]);
+    }
+
+    $weight++;
+  }
+}
+
+/**
+ * Helper function to create terms.
+ *
+ * @param string $term_name
+ *   The name of the term.
+ * @param string $vocabulary
+ *   The machine name of the vocabulary.
+ * @param int $weight
+ *   The weight of the term.
+ * @param array $parent
+ *   The array of tid(s) of the parent term(s).
+ * @param array $fields
+ *   Additional field values.
+ * @param boolean $id
+ *   Whether to return the id or the whole term.
+ *
+ * @return int $tid
+ *   The tid of the term.
+ */
+function _swfwmd_taxonomy_terms_create($term_name, $vocabulary, $weight = 0, $parent = [], $fields = [], $id = TRUE) {
+  // Save new term to the database.
+  $term_options = [
+    'vid' => $vocabulary,
+    'name' => $term_name,
+    'weight' => $weight,
+    'parent' => $parent,
+  ];
+
+  // Add field values to the term options if it is not empty.
+  if (!empty($fields)) {
+    $term_options = array_merge($term_options, $fields);
+  }
+
+  $term = Term::create($term_options);
+  $term->save();
+
+  if ($id) {
+    // Return the tid of the term.
+    return $term->id();
+  }
+  else {
+    // Or return the entire term entity.
+    return $term;
+  }
+}
+
+/**
+ * Helper function to update existing terms.
+ *
+ * @param Drupal\taxonomy\Entity\Term $old_term
+ *   The term entity to update.
+ * @param string $term_name
+ *   The name of the term.
+ * @param string $vocabulary
+ *   The machine name of the vocabulary.
+ * @param int $weight
+ *   The weight of the term.
+ * @param array $parent
+ *   The array of tid(s) of the parent term(s).
+ * @param array $fields
+ *   Additional field values.
+ * @param boolean $id
+ *   Whether to return the id or the whole term.
+ *
+ * @return int $tid
+ *   The tid of the term or the whole term entity.
+ */
+function _swfwmd_taxonomy_terms_update($term, $term_name, $vocabulary, $weight = 0, $parent = [], $fields = [], $id = TRUE) {
+  // Update the field information of the old term.
+  $term->name = $term_name;
+  $term->vid = $vocabulary;
+  $term->weight = $weight;
+  $term->parent = $parent;
+
+  // Add field values to the term options if it is not empty.
+  if (!empty($fields)) {
+    foreach ($fields as $field_name => $field_value) {
+      $term->{$field_name} = $field_value;
+    }
+  }
+
+  // Save the update values of the term.
+  $term->save();
+
+  if ($id) {
+    // Return the tid of the term.
+    return $term->id();
+  }
+  else {
+    // Or return the entire term entity.
+    return $term;
+  }
+}
